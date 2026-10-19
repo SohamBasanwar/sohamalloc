@@ -306,11 +306,36 @@ static void hb_give(hbmeta_t *hb, unsigned s, unsigned k, uint64_t now) {
   hb_rebucket(hb);
 }
 
-static void ph_purge(int force);
+/* Release modes: decay (age >= decay_ns), excess (down to the dirty limit,
+ * whole free hugeblocks first), all (soham_collect(1), malloc_trim). */
+enum { PURGE_DECAY = 0, PURGE_ALL = 1, PURGE_EXCESS = 2 };
+static void ph_purge(int mode);
+
+/* Free resident memory the page heap may keep (§6 profiles). */
+SOHAM_INLINE size_t ph_dirty_limit(void) {
+  size_t used = g_ph.s_used << SOHAM_SLICE_SHIFT;
+  size_t lim = used / g_cfg.dirty_div;
+  return lim > g_cfg.dirty_min ? lim : g_cfg.dirty_min;
+}
+
+/* Called after a page-heap operation (lock not held): run the release
+ * engine when the dirty limit is exceeded or a decay interval passed. */
+SOHAM_INLINE void ph_after_op(bool excess, bool decay_due) {
+  if (excess) ph_purge(PURGE_EXCESS);
+  else if (decay_due) ph_purge(PURGE_DECAY);
+}
+
+/* In handler context (tls.trymode) every allocator lock is a trylock, so
+ * a handler never waits for a lock its own interrupted thread may hold. */
+SOHAM_INLINE bool lock_or_try(soham_lock_t *l) {
+  if (unlikely(t_tls.trymode)) return soham_trylock(l);
+  soham_lock(l);
+  return true;
+}
 
 /* Allocate k (1..32) contiguous slices inside one hugeblock. */
 static uintptr_t ph_alloc_slices(unsigned k, bool *zero) {
-  soham_lock(&g_ph.lock);
+  if (!lock_or_try(&g_ph.lock)) return 0;
   hbmeta_t *hb = NULL;
   for (;;) {
     uint64_t m = g_ph.bucket_mask >> k;
@@ -321,14 +346,16 @@ static uintptr_t ph_alloc_slices(unsigned k, bool *zero) {
   SOHAM_ASSERT(s >= 0);
   *zero = hb_take(hb, (unsigned)s, k);
   uintptr_t a = hb_addr(hb) + ((uintptr_t)s << SOHAM_SLICE_SHIFT);
+  bool decay_due = g_ph.s_dirty && !t_tls.trymode && soham_os_now_ns() - g_ph.last_purge_ns >= g_cfg.purge_interval_ns;
   soham_unlock(&g_ph.lock);
+  if (unlikely(decay_due)) ph_after_op(false, true);
   return a;
 }
 
 /* Allocate k slices starting on a hugeblock boundary (k may exceed 32). */
 static uintptr_t ph_alloc_hbs(size_t k, bool *zero) {
   uint32_t nh = (uint32_t)((k + HB_SLICES - 1) / HB_SLICES);
-  soham_lock(&g_ph.lock);
+  if (!lock_or_try(&g_ph.lock)) return 0;
   for (int attempt = 0; attempt < 2; attempt++) {
     for (window_t *w = g_ph.windows; w; w = w->next) {
       uint32_t run = 0;
@@ -376,8 +403,11 @@ static void ph_free(uintptr_t a, size_t k) {
     i++;
   }
   if (now - g_ph.last_purge_ns >= g_cfg.purge_interval_ns) purge = true;
+  /* Batch: act once the excess reaches 1/8 of the limit (at least 1 MiB). */
+  size_t lim = ph_dirty_limit();
+  bool excess = (g_ph.s_dirty << SOHAM_SLICE_SHIFT) > lim + (lim / 8 > MiB ? lim / 8 : MiB);
   soham_unlock(&g_ph.lock);
-  if (purge) ph_purge(0);
+  ph_after_op(excess, purge);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -409,70 +439,89 @@ static void purge_finish(const purge_span_t *sp, int zeroed) {
   }
 }
 
-/* Release free resident slices idle for >= decay (all of them when force).
- * Never makes a syscall while holding ph.lock. */
-static void ph_purge(int force) {
+/* Run the release engine in the given mode (see PURGE_*).  Never makes a
+ * syscall while holding ph.lock: ranges are marked `releasing` (neither
+ * free nor used), released unlocked, then marked free again. */
+static void ph_purge(int mode) {
   purge_span_t spans[PURGE_MAX_RANGES];
   soham_os_range_t ranges[PURGE_MAX_RANGES];
-  for (int round = 0; round < 64; round++) {
+  for (int round = 0; round < 256; round++) {
     size_t n = 0;
     bool more = false;
     uint64_t now = soham_os_now_ns();
     soham_lock(&g_ph.lock);
-    if (!force && round == 0 && now - g_ph.last_purge_ns < g_cfg.purge_interval_ns) { soham_unlock(&g_ph.lock); return; }
-    if (round == 0) g_ph.last_purge_ns = now;
-    for (window_t *w = g_ph.windows; w && !more; w = w->next) {
-      for (uint32_t i = 0; i < w->nhb; i++) {
-        hbmeta_t *hb = &w->hb[i];
-        if (!hb->dirty) continue;
-        if (!force && now - hb->dirty_since < g_cfg.decay_ns) continue;
-        if (n == PURGE_MAX_RANGES) { more = true; break; }
-        uint32_t d = hb->dirty;
-        unsigned cnt = (unsigned)__builtin_popcount(d);
-        hb->releasing |= d;
-        hb->dirty = 0;
-        hb->dirty_since = 0;
-        g_ph.s_dirty -= cnt;
-        g_ph.s_releasing += cnt;
-        hb_rebucket(hb);
-        /* One span per maximal run of dirty slices; merge with the previous
-         * span when it ends exactly where this run starts. */
-        uint64_t x = d;
-        while (x) {
-          unsigned s = (unsigned)__builtin_ctzll(x);
-          unsigned len = (unsigned)__builtin_ctzll(~(x >> s));
-          x &= ~((((uint64_t)1 << len) - 1) << s);
-          uintptr_t a = hb_addr(hb) + ((uintptr_t)s << SOHAM_SLICE_SHIFT);
-          if (n > 0 && spans[n - 1].w == w &&
-              (uintptr_t)ranges[n - 1].base + ranges[n - 1].len == a) {
-            spans[n - 1].nslices += len;
-            ranges[n - 1].len += (size_t)len << SOHAM_SLICE_SHIFT;
-          } else if (n < PURGE_MAX_RANGES) {
-            spans[n] = (purge_span_t){ w, i, s, len };
-            ranges[n] = (soham_os_range_t){ (void *)a, (size_t)len << SOHAM_SLICE_SHIFT };
-            n++;
-          } else {
-            /* Out of span slots mid-hugeblock: put the rest back as dirty. */
-            uint32_t rest = (uint32_t)(((x | ((((uint64_t)1 << len) - 1) << s))) & HB_FULL);
-            unsigned rc = (unsigned)__builtin_popcount(rest);
-            hb->releasing &= ~rest;
-            hb->dirty |= rest;
-            hb->dirty_since = now;
-            g_ph.s_dirty += rc;
-            g_ph.s_releasing -= rc;
-            hb_rebucket(hb);
-            x = 0;
-            more = true;
+    if (mode == PURGE_DECAY && round == 0) {
+      if (now - g_ph.last_purge_ns < g_cfg.purge_interval_ns) { soham_unlock(&g_ph.lock); return; }
+      g_ph.last_purge_ns = now;
+    }
+    size_t lim = ph_dirty_limit();
+    size_t want = 0;   /* PURGE_EXCESS: slices still to release */
+    if (mode == PURGE_EXCESS) {
+      size_t dirty = g_ph.s_dirty << SOHAM_SLICE_SHIFT;
+      if (dirty <= lim) { soham_unlock(&g_ph.lock); return; }
+      want = (dirty - lim) >> SOHAM_SLICE_SHIFT;
+    }
+    /* Excess mode makes two passes: wholly free hugeblocks first (one range
+     * each, no THP split), then partially used ones. */
+    for (int pass = (mode == PURGE_EXCESS ? 0 : 1); pass < 2 && !more; pass++) {
+      for (window_t *w = g_ph.windows; w && !more; w = w->next) {
+        for (uint32_t i = 0; i < w->nhb; i++) {
+          hbmeta_t *hb = &w->hb[i];
+          if (!hb->dirty) continue;
+          if (pass == 0 && (hb->used | hb->releasing)) continue;
+          if (mode == PURGE_DECAY && now - hb->dirty_since < g_cfg.decay_ns) continue;
+          if (mode == PURGE_EXCESS && want == 0) { more = false; goto done_scan; }
+          if (n == PURGE_MAX_RANGES) { more = true; break; }
+          uint32_t d = hb->dirty;
+          unsigned cnt = (unsigned)__builtin_popcount(d);
+          hb->releasing |= d;
+          hb->dirty = 0;
+          hb->dirty_since = 0;
+          g_ph.s_dirty -= cnt;
+          g_ph.s_releasing += cnt;
+          want = want > cnt ? want - cnt : 0;
+          hb_rebucket(hb);
+          /* One span per maximal run of dirty slices; merge with the previous
+           * span when it ends exactly where this run starts. */
+          uint64_t x = d;
+          while (x) {
+            unsigned s = (unsigned)__builtin_ctzll(x);
+            unsigned len = (unsigned)__builtin_ctzll(~(x >> s));
+            uint64_t runmask = (((uint64_t)1 << len) - 1) << s;
+            x &= ~runmask;
+            uintptr_t a = hb_addr(hb) + ((uintptr_t)s << SOHAM_SLICE_SHIFT);
+            if (n > 0 && spans[n - 1].w == w &&
+                (uintptr_t)ranges[n - 1].base + ranges[n - 1].len == a) {
+              spans[n - 1].nslices += len;
+              ranges[n - 1].len += (size_t)len << SOHAM_SLICE_SHIFT;
+            } else if (n < PURGE_MAX_RANGES) {
+              spans[n] = (purge_span_t){ w, i, s, len };
+              ranges[n] = (soham_os_range_t){ (void *)a, (size_t)len << SOHAM_SLICE_SHIFT };
+              n++;
+            } else {
+              /* Out of span slots mid-hugeblock: put the rest back as dirty. */
+              uint32_t rest = (uint32_t)((x | runmask) & HB_FULL);
+              unsigned rc = (unsigned)__builtin_popcount(rest);
+              hb->releasing &= ~rest;
+              hb->dirty |= rest;
+              hb->dirty_since = now;
+              g_ph.s_dirty += rc;
+              g_ph.s_releasing -= rc;
+              hb_rebucket(hb);
+              x = 0;
+              more = true;
+            }
           }
         }
       }
     }
+  done_scan:
     soham_unlock(&g_ph.lock);
     if (n == 0) return;
     int zeroed = soham_os_release(ranges, n, g_cfg.release_mode);
     soham_lock(&g_ph.lock);
     for (size_t j = 0; j < n; j++) purge_finish(&spans[j], zeroed);
     soham_unlock(&g_ph.lock);
-    if (!more) return;
+    if (!more && mode != PURGE_EXCESS) return;
   }
 }

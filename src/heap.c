@@ -468,7 +468,7 @@ static void page_detach(rec_t *r) {
 static rec_t *pool_claim(heap_t *h, unsigned c) {
   pool_t *pl = &g_pools[c];
   if (atomic_load_explicit(&pl->n, memory_order_relaxed) == 0) return NULL;
-  soham_lock(&pl->lock);
+  if (!lock_or_try(&pl->lock)) return NULL;
   rec_t *r = pl->head[0] ? pl->head[0] : pl->head[1] ? pl->head[1] : pl->head[2];
   if (!r) { soham_unlock(&pl->lock); return NULL; }
   pool_unlink(pl, r);
@@ -538,7 +538,7 @@ SOHAM_INLINE bool page_ready(rec_t *r) {
 
 /* Allocation from bin c when cur is empty (busy held). */
 static SOHAM_NOINLINE void *bin_refill(heap_t *h, unsigned c) {
-  pending_drain();
+  if (likely(!t_tls.trymode)) pending_drain();
   bin_t *bin = &h->bins[c];
   rec_t *r = bin->cur;
   if (r != &g_sentinel) {
@@ -704,7 +704,7 @@ static void *solo_alloc(size_t n, size_t align) {
   if (align < B) align = B;
   void *p = soham_os_map_rw(len, align);
   if (!p) return NULL;
-  soham_lock(&g_solo_lock);
+  if (!lock_or_try(&g_solo_lock)) { soham_os_unmap(p, len); return NULL; }
   if ((g_solo_n + 1) * 2 > g_solo_cap && !solo_grow_locked()) {
     soham_unlock(&g_solo_lock);
     soham_os_unmap(p, len);

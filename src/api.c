@@ -102,15 +102,21 @@ static void config_init(void) {
   g_cfg.max_spares = 2;
   g_cfg.thp_huge = 0;
   g_cfg.prov_bytes = g_geo.B > 8 * KiB ? g_geo.B : 8 * KiB;
+  g_cfg.dirty_min = 32 * MiB;
+  g_cfg.dirty_div = 8;
   int secure_env = soham_os_is_secure();
   if (!secure_env) {
     if (env_is("SOHAMALLOC_PROFILE", "memory")) {
       g_cfg.profile = PROFILE_MEMORY;
       g_cfg.decay_ns = 100000000ull;    /* 100 ms */
       g_cfg.max_spares = 0;
+      g_cfg.dirty_min = 8 * MiB;
+      g_cfg.dirty_div = 32;
     } else if (env_is("SOHAMALLOC_PROFILE", "throughput")) {
       g_cfg.profile = PROFILE_THROUGHPUT;
       g_cfg.decay_ns = 10000000000ull;  /* 10 s */
+      g_cfg.dirty_min = 256 * MiB;
+      g_cfg.dirty_div = 2;
       g_cfg.release_mode = SOHAM_OS_RELEASE_FREE;
       g_cfg.thp_huge = soham_os_thp_mode() == 1;
     }
@@ -314,8 +320,20 @@ static SOHAM_NOINLINE void *alloc_slow(size_t n, bool *zero) {
   soham_tls_t *t = &t_tls;
   *zero = false;
   if (unlikely(atomic_load_explicit(&t->busy, memory_order_relaxed))) {
-    /* A signal handler interrupted the allocator on this thread. */
-    void *p = bss_alloc(n, 16);
+    /* A signal handler interrupted the allocator on this thread: use the
+     * shared heap if its lock is free, with every lock below it taken by
+     * trylock only (no handler ever waits); otherwise the static arena. */
+    void *p = NULL;
+    if (atomic_load_explicit(&g_init_state, memory_order_acquire) == 2 && !t->trymode &&
+        soham_trylock(&g_shared_lock)) {
+      t->trymode = 1;
+      signal_fence();
+      p = heap_alloc(g_shared, n, zero);
+      signal_fence();
+      t->trymode = 0;
+      soham_unlock(&g_shared_lock);
+    }
+    if (!p) { *zero = false; p = bss_alloc(n, 16); }
     if (!p) errno = ENOMEM;
     return p;
   }
@@ -650,7 +668,7 @@ SOHAM_API void soham_collect(int force) {
   if (force && t->heap) heap_flush(t->heap);
   signal_fence();
   atomic_store_explicit(&t->busy, 0, memory_order_relaxed);
-  ph_purge(force ? 1 : 0);
+  ph_purge(force ? PURGE_ALL : PURGE_DECAY);
 }
 
 typedef struct {
@@ -658,7 +676,7 @@ typedef struct {
 } walk_t;
 
 /* Racy snapshot of every page (values are read without the owners' locks). */
-static void walk_pages(walk_t *wk) {
+static SOHAM_RACY_SNAPSHOT void walk_pages(walk_t *wk) {
   for (window_t *w = g_ph.windows; w; w = w->next) {
     for (uint32_t i = 0; i < w->nhb; i++) {
       hbmeta_t *hb = &w->hb[i];
@@ -751,8 +769,10 @@ SOHAM_API void soham_stats_print(int fd) {
 }
 
 /* Verify the invariants that can be checked without stopping other
- * threads: page geometry, owner/flag consistency and, for pages owned by
- * the calling thread, the full local free list.  Returns the error count. */
+ * threads: the page heap's bitmaps and buckets (stable under its lock) and,
+ * for pages owned by the calling thread, the page geometry and the full
+ * local free list.  Pages of other threads are skipped: their records are
+ * written outside the page-heap lock.  Returns the error count. */
 SOHAM_API int soham_check_heap(void) {
   if (atomic_load_explicit(&g_init_state, memory_order_acquire) != 2) return 0;
   soham_tls_t *t = &t_tls;
@@ -764,26 +784,24 @@ SOHAM_API int soham_check_heap(void) {
       if (hb->used & hb->releasing) errors++;
       if ((hb->dirty | hb->zero) & (hb->used | hb->releasing)) errors++;
       if (hb->longest != longest_run(hb_free_mask(hb))) errors++;
+      if (!t->heap) continue;
       uint32_t used = hb->used;
       while (used) {
         unsigned s = (unsigned)__builtin_ctz(used);
         used &= used - 1;
         rec_t *r = rec_of(hb_addr(hb) + ((uintptr_t)s << SOHAM_SLICE_SHIFT));
+        if (atomic_load_explicit(&r->r.owner, memory_order_relaxed) != t->tag) continue;
         if (r->r.head_delta) continue;
-        if (r->r.kind == KIND_NONE) { errors++; continue; }
-        if (r->r.kind == KIND_RUN) continue;
+        if (r->r.kind != KIND_SMALL && r->r.kind != KIND_MEDIUM) { errors++; continue; }
         if (r->r.cap == 0 || (size_t)r->r.cap * r->r.bsize > r->r.psize) { errors++; continue; }
-        uint32_t owner = atomic_load_explicit(&r->r.owner, memory_order_relaxed);
-        if (t->heap && owner == t->tag) {
-          uint32_t n = o_cnt(r), k = 0;
-          uintptr_t p = o_head(r);
-          while (p && k <= n) {
-            if (!block_ok(r, p) || p >= r->o.bump) { errors++; break; }
-            p = link_dec(r->r.key, *(uintptr_t *)p, p);
-            k++;
-          }
-          if (k != n || n > r->o.prov) errors++;
+        uint32_t n = o_cnt(r), k = 0;
+        uintptr_t p = o_head(r);
+        while (p && k <= n) {
+          if (!block_ok(r, p) || p >= r->o.bump) { errors++; break; }
+          p = link_dec(r->r.key, *(uintptr_t *)p, p);
+          k++;
         }
+        if (k != n || n > r->o.prov) errors++;
       }
     }
   }

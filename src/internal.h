@@ -303,7 +303,8 @@ typedef struct {
   uint32_t tag;            /* heap->tag, or 0 */
   _Atomic uint8_t busy;    /* inside the allocator: reentry is a signal handler */
   uint8_t state;
-  uint16_t pad;
+  uint8_t trymode;         /* handler context: every lock is a trylock (§5.3) */
+  uint8_t pad;
   void *deferred;          /* frees deferred from handler context */
 } soham_tls_t;
 
@@ -344,6 +345,8 @@ typedef struct {
   int release_mode;            /* SOHAM_OS_RELEASE_* */
   int thp_huge;                /* apply MADV_HUGEPAGE to data */
   size_t prov_bytes;           /* provisioning step */
+  size_t dirty_min;            /* the page heap keeps at most max(dirty_min, */
+  size_t dirty_div;            /*   used / dirty_div) free resident bytes */
 } soham_cfg_t;
 
 enum { PROFILE_BALANCED = 0, PROFILE_MEMORY = 1, PROFILE_THROUGHPUT = 2 };
@@ -372,6 +375,14 @@ SOHAM_INLINE void o_set(rec_t *r, uintptr_t head, uint32_t cnt) {
 }
 
 SOHAM_INLINE rec_t *rec_head(rec_t *r) { return (rec_t *)((char *)r - r->r.head_delta); }
+
+/* Racy statistics snapshots read records other threads are writing; the
+ * values are only reported, never trusted (§2 soham_get_stats). */
+#if defined(__SANITIZE_THREAD__) || SOHAM_TSAN
+#  define SOHAM_RACY_SNAPSHOT __attribute__((no_sanitize("thread")))
+#else
+#  define SOHAM_RACY_SNAPSHOT
+#endif
 
 SOHAM_INLINE void signal_fence(void) { atomic_signal_fence(memory_order_seq_cst); }
 
