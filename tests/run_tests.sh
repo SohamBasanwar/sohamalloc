@@ -221,6 +221,7 @@ memory_return      memory_return.c      c    300  soham
 stats_api          stats_api.c          c    180  soham
 internal_props     internal_props.c     c    120  soham
 regress_signal_enomem regress/signal_reentrant_enomem.c c 60 soham
+regress_signal_attach regress/signal_thread_attach.c c 60 soham
 "
 fi
 

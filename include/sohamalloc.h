@@ -48,7 +48,7 @@ struct soham_stats {
   size_t windows, heaps_live, heaps_pooled;
 };
 
-int    soham_get_stats(struct soham_stats *out);   /* 0 on success; a best-effort snapshot */
+int    soham_get_stats(struct soham_stats *out);   /* 0 on success; a best-effort snapshot; -1 from a signal handler that interrupted the allocator */
 int    soham_check_heap(void);                     /* 0 = consistent; SOHAM_DEBUG builds walk everything */
 const char *soham_version(void);
 

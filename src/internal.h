@@ -35,6 +35,9 @@
 #ifndef SOHAM_DEBUG
 #define SOHAM_DEBUG 0
 #endif
+#ifndef SOHAM_CXX_OPERATORS
+#define SOHAM_CXX_OPERATORS 1   /* C++ operator new/delete in override builds */
+#endif
 
 #if defined(_WIN32) || defined(__APPLE__)
 /* Override of the system allocator is only implemented for ELF platforms;
@@ -132,7 +135,8 @@ SOHAM_INLINE uint64_t fw_make(uintptr_t p, uint32_t c) { return (uint64_t)p | ((
 #define XF_QUEUED  ((uint64_t)2)   /* in a class pool; count = total free */
 #define XF_PENDING ((uint64_t)4)   /* one thread is responsible for resolve() */
 #define XF_WATCH   ((uint64_t)8)   /* owned page on its owner's full list: the
-                                      next remote free notifies the owner */
+                                      remote free reaching unfull_threshold
+                                      clears it and notifies the owner */
 #define XF_FLAGS   ((uint64_t)15)
 SOHAM_INLINE uintptr_t xf_ptr(uint64_t w) { return (uintptr_t)(w & FW_PTRMASK & ~(uint64_t)15); }
 SOHAM_INLINE uint32_t xf_cnt(uint64_t w) { return (uint32_t)(w >> SOHAM_PTR_BITS); }
@@ -168,7 +172,8 @@ typedef struct {                 /* line O: written by the owning heap */
   _Atomic uint32_t fcnt;
   uint32_t prov;                 /* blocks provisioned so far */
   uint32_t event_at;             /* local count at which a local free calls
-                                    page_local_event: prov, or 1 on the full list */
+                                    page_local_event: prov, or unfull_threshold
+                                    on the full list */
   uint32_t psize;                /* copy of r.psize */
   uintptr_t bump;                /* next unprovisioned byte */
   /* Owner-side copies of line R, so the owner's fast paths touch one line. */
@@ -347,6 +352,7 @@ typedef struct {
   size_t prov_bytes;           /* provisioning step */
   size_t dirty_min;            /* the page heap keeps at most max(dirty_min, */
   size_t dirty_div;            /*   used / dirty_div) free resident bytes */
+  size_t peak_num;             /* recent-swing allowance cap: used * peak_num / 4 */
 } soham_cfg_t;
 
 enum { PROFILE_BALANCED = 0, PROFILE_MEMORY = 1, PROFILE_THROUGHPUT = 2 };

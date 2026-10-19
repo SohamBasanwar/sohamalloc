@@ -109,6 +109,10 @@ typedef struct {
   uint64_t bucket_mask;         /* bit b set: bucket[b] non-empty (b = 1..32) */
   hbmeta_t *bucket[HB_SLICES + 1];
   uint64_t last_purge_ns;
+  /* Recent peak of s_used: the maximum over this decay epoch and the last
+   * one (see ph_dirty_limit). */
+  size_t s_peak_cur, s_peak_prev;
+  uint64_t peak_epoch_ns;
   /* statistics, in slices */
   size_t s_used, s_dirty, s_zero, s_lazy, s_releasing;
   size_t committed_data;        /* bytes */
@@ -225,11 +229,8 @@ static window_t *window_create(void) {
   w->nhb_max = g_geo.nhb_max;
   w->index = g_ph.nwindows;
   w->next = NULL;
-  for (uint32_t i = 0; i < w->nhb_max; i++) {
-    hbmeta_t *hb = &w->hb[i];
-    hb->win = w;
-    hb->idx = i;
-  }
+  /* hb[i].win and .idx are set when hugeblock i is committed (ph_grow), so
+   * window creation touches none of the 2047 metadata entries. */
   if (g_ph.last) g_ph.last->next = w; else g_ph.windows = w;
   g_ph.last = w;
   g_ph.nwindows++;
@@ -264,6 +265,8 @@ static bool ph_grow(uint32_t n) {
   if (g_cfg.thp_huge) soham_os_advise_huge((void *)from, len);
   for (uint32_t i = 0; i < step; i++) {
     hbmeta_t *hb = &w->hb[w->nhb + i];
+    hb->win = w;
+    hb->idx = w->nhb + i;
     hb->used = 0; hb->dirty = 0; hb->zero = HB_FULL; hb->releasing = 0;
     hb->dirty_since = 0; hb->bucket = 0; hb->bprev = hb->bnext = NULL;
     hb_rebucket(hb);
@@ -291,6 +294,7 @@ static bool hb_take(hbmeta_t *hb, unsigned s, unsigned k) {
   hb->zero &= ~bits;
   if (!hb->dirty) hb->dirty_since = 0;
   g_ph.s_used += k;
+  if (g_ph.s_used > g_ph.s_peak_cur) g_ph.s_peak_cur = g_ph.s_used;
   hb_rebucket(hb);
   return zero;
 }
@@ -311,11 +315,35 @@ static void hb_give(hbmeta_t *hb, unsigned s, unsigned k, uint64_t now) {
 enum { PURGE_DECAY = 0, PURGE_ALL = 1, PURGE_EXCESS = 2 };
 static void ph_purge(int mode);
 
-/* Free resident memory the page heap may keep (§6 profiles). */
+/* Free resident memory the page heap may keep (§6 profiles):
+ * max(dirty_min, used/dirty_div, recent swing), where the recent swing is
+ * how far s_used fell below its peak of the last one or two decay epochs,
+ * capped at used*peak_num/4.  A program whose live size oscillates (free a
+ * 20 MiB buffer, allocate another) keeps the memory it is about to reuse
+ * instead of releasing and re-faulting it on every cycle; the decay engine
+ * still returns it once the swing stops.  The cap keeps a program that
+ * frees nearly everything from holding its old peak. */
 SOHAM_INLINE size_t ph_dirty_limit(void) {
-  size_t used = g_ph.s_used << SOHAM_SLICE_SHIFT;
-  size_t lim = used / g_cfg.dirty_div;
-  return lim > g_cfg.dirty_min ? lim : g_cfg.dirty_min;
+  size_t used = g_ph.s_used;
+  size_t lim = (used << SOHAM_SLICE_SHIFT) / g_cfg.dirty_div;
+  if (lim < g_cfg.dirty_min) lim = g_cfg.dirty_min;
+  size_t peak = g_ph.s_peak_cur > g_ph.s_peak_prev ? g_ph.s_peak_cur : g_ph.s_peak_prev;
+  if (peak > used) {
+    size_t swing = peak - used, cap = used * g_cfg.peak_num / 4;
+    if (swing > cap) swing = cap;
+    swing <<= SOHAM_SLICE_SHIFT;
+    if (swing > lim) lim = swing;
+  }
+  return lim;
+}
+
+/* Start a new peak epoch every decay_ns (lock held). */
+SOHAM_INLINE void ph_peak_roll(uint64_t now) {
+  if (now - g_ph.peak_epoch_ns < g_cfg.decay_ns) return;
+  /* More than one epoch without a roll: the old peak is stale too. */
+  g_ph.s_peak_prev = now - g_ph.peak_epoch_ns < 2 * g_cfg.decay_ns ? g_ph.s_peak_cur : g_ph.s_used;
+  g_ph.s_peak_cur = g_ph.s_used;
+  g_ph.peak_epoch_ns = now;
 }
 
 /* Called after a page-heap operation (lock not held): run the release
@@ -352,31 +380,40 @@ static uintptr_t ph_alloc_slices(unsigned k, bool *zero) {
   return a;
 }
 
-/* Allocate k slices starting on a hugeblock boundary (k may exceed 32). */
+/* Allocate k slices starting on a hugeblock boundary (k may exceed 32).
+ * Among the runs of free hugeblocks long enough, take the one with the
+ * most resident (dirty) slices: reusing them costs no page faults, and a
+ * fully dirty run ends the scan. */
 static uintptr_t ph_alloc_hbs(size_t k, bool *zero) {
   uint32_t nh = (uint32_t)((k + HB_SLICES - 1) / HB_SLICES);
   if (!lock_or_try(&g_ph.lock)) return 0;
   for (int attempt = 0; attempt < 2; attempt++) {
-    for (window_t *w = g_ph.windows; w; w = w->next) {
+    window_t *bw = NULL;
+    uint32_t bfirst = 0;
+    long bscore = -1;
+    for (window_t *w = g_ph.windows; w && bscore < (long)nh * HB_SLICES; w = w->next) {
       uint32_t run = 0;
+      long score = 0;
       for (uint32_t i = 0; i < w->nhb; i++) {
         hbmeta_t *hb = &w->hb[i];
-        if (hb->used == 0 && hb->releasing == 0) {
-          if (++run == nh) {
-            uint32_t first = i + 1 - nh;
-            bool z = true;
-            for (uint32_t j = first; j <= i; j++) z &= hb_take(&w->hb[j], 0, HB_SLICES);
-            size_t tail = (size_t)nh * HB_SLICES - k;
-            if (tail) hb_give(&w->hb[i], (unsigned)(HB_SLICES - tail), (unsigned)tail, soham_os_now_ns());
-            *zero = z;
-            uintptr_t a = w->base + g_geo.data_off + (uintptr_t)first * g_geo.H;
-            soham_unlock(&g_ph.lock);
-            return a;
-          }
-        } else {
-          run = 0;
+        if (hb->used != 0 || hb->releasing != 0) { run = 0; score = 0; continue; }
+        score += __builtin_popcount(hb->dirty);
+        if (++run > nh) score -= __builtin_popcount(w->hb[i - nh].dirty);
+        if (run >= nh && score > bscore) {
+          bw = w; bfirst = i + 1 - nh; bscore = score;
+          if (score == (long)nh * HB_SLICES) break;
         }
       }
+    }
+    if (bw) {
+      bool z = true;
+      for (uint32_t j = bfirst; j < bfirst + nh; j++) z &= hb_take(&bw->hb[j], 0, HB_SLICES);
+      size_t tail = (size_t)nh * HB_SLICES - k;
+      if (tail) hb_give(&bw->hb[bfirst + nh - 1], (unsigned)(HB_SLICES - tail), (unsigned)tail, soham_os_now_ns());
+      *zero = z;
+      uintptr_t a = bw->base + g_geo.data_off + (uintptr_t)bfirst * g_geo.H;
+      soham_unlock(&g_ph.lock);
+      return a;
     }
     /* Grow the last window (its free top hugeblocks extend the run). */
     if (!ph_grow(nh)) break;
@@ -403,6 +440,7 @@ static void ph_free(uintptr_t a, size_t k) {
     i++;
   }
   if (now - g_ph.last_purge_ns >= g_cfg.purge_interval_ns) purge = true;
+  ph_peak_roll(now);
   /* Batch: act once the excess reaches 1/8 of the limit (at least 1 MiB). */
   size_t lim = ph_dirty_limit();
   bool excess = (g_ph.s_dirty << SOHAM_SLICE_SHIFT) > lim + (lim / 8 > MiB ? lim / 8 : MiB);
@@ -453,6 +491,7 @@ static void ph_purge(int mode) {
     if (mode == PURGE_DECAY && round == 0) {
       if (now - g_ph.last_purge_ns < g_cfg.purge_interval_ns) { soham_unlock(&g_ph.lock); return; }
       g_ph.last_purge_ns = now;
+      ph_peak_roll(now);
     }
     size_t lim = ph_dirty_limit();
     size_t want = 0;   /* PURGE_EXCESS: slices still to release */

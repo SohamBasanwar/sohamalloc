@@ -87,6 +87,13 @@ SOHAM_INLINE bool in_window(uintptr_t a) {
 }
 
 SOHAM_INLINE uint32_t pending_threshold(uint32_t cap) { return cap >= 8 ? cap / 8 : 1; }
+/* A page on its owner's full list returns to the avail list once this many
+ * blocks are free, counting local and remote frees separately.  Returning
+ * it at the first free makes a refill yield one block and retire the page
+ * again (one slow path per allocation under random-order frees); waiting
+ * for 1/8 bounds refills to one per cap/8 allocations, at the cost of at
+ * most 1/8 of a full page left idle. */
+SOHAM_INLINE uint32_t unfull_threshold(uint32_t cap) { return cap >= 8 ? cap / 8 : 1; }
 
 static uint64_t heap_rand(heap_t *h) {
   /* xorshift64* */
@@ -218,8 +225,9 @@ static void merge_chain(rec_t *r, uintptr_t head, uint32_t n) {
 }
 
 /* Owned page: take every remote free.  An owned page's xfree carries no
- * flag except WATCH, and WATCH implies an empty chain (it is set only on a
- * zero count and cleared by the first remote free). */
+ * flag except WATCH, which only pages on the full list carry (set on a zero
+ * count, cleared by the remote free reaching unfull_threshold or by
+ * page_unwatch), and full-list pages are never collected. */
 static uint32_t collect(rec_t *r) {
   uint64_t x0 = atomic_load_explicit(&r->x.xfree, memory_order_relaxed);
   if (xf_cnt(x0) == 0) return 0;
@@ -246,9 +254,9 @@ SOHAM_INLINE void *page_pop(rec_t *r) {
 /* Owner lists (avail, full) are doubly linked through line O. */
 static void list_push(rec_t **head, rec_t *r, uint32_t which) {
   r->r.lflags = which;
-  /* On the full list the first local free is an event; otherwise only the
-   * free that makes the page completely free is. */
-  r->o.event_at = (which == LF_FULL) ? o_cnt(r) + 1 : r->o.prov;
+  /* On the full list the local free reaching unfull_threshold is an event;
+   * otherwise only the free that makes the page completely free is. */
+  r->o.event_at = (which == LF_FULL) ? o_cnt(r) + unfull_threshold(r->r.cap) : r->o.prov;
   r->o.lprev = NULL;
   r->o.lnext = *head;
   if (*head) (*head)->o.lprev = r;
@@ -418,7 +426,10 @@ static void remote_free(rec_t *rh, uintptr_t a, bool in_handler) {
     uint32_t cnt = xf_cnt(old) + 1;
     if (unlikely(cnt > cap)) soham_fatal("double free detected (remote count exceeds capacity)", a);
     *(uintptr_t *)a = link_enc(key, head, a);
-    uint64_t nw = xf_make(a, cnt, old & XF_FLAGS & ~XF_WATCH);
+    uint64_t flags = old & XF_FLAGS;
+    bool notify = false;
+    if ((flags & XF_WATCH) && cnt >= unfull_threshold(cap)) { flags &= ~XF_WATCH; notify = true; }
+    uint64_t nw = xf_make(a, cnt, flags);
     bool responsible = false;
     if ((old & (XF_ORPHAN | XF_QUEUED)) && !(old & XF_PENDING) &&
         (((old & XF_ORPHAN) && cnt >= pending_threshold(cap)) || cnt == cap)) {
@@ -426,7 +437,7 @@ static void remote_free(rec_t *rh, uintptr_t a, bool in_handler) {
       responsible = true;
     }
     if (atomic_compare_exchange_weak_explicit(&rh->x.xfree, &old, nw, memory_order_acq_rel, memory_order_relaxed)) {
-      if (old & XF_WATCH) {
+      if (notify) {
         /* The CAS acquired the owner's WATCH publication, so oheap is the
          * heap that owns the page now (or owned it until a later detach). */
         heap_t *oh = atomic_load_explicit(&rh->r.oheap, memory_order_relaxed);
