@@ -390,10 +390,13 @@ static uintptr_t ph_alloc_hbs(size_t k, bool *zero) {
   for (int attempt = 0; attempt < 2; attempt++) {
     window_t *bw = NULL;
     uint32_t bfirst = 0;
-    long bscore = -1;
-    for (window_t *w = g_ph.windows; w && bscore < (long)nh * HB_SLICES; w = w->next) {
+    /* int64_t, not long: with a 32-bit long (ILP32, LLP64) "long * 32u" is
+     * unsigned and bscore = -1 would compare as the largest value. */
+    const int64_t perfect = (int64_t)nh * (int64_t)HB_SLICES;
+    int64_t bscore = -1;
+    for (window_t *w = g_ph.windows; w && bscore < perfect; w = w->next) {
       uint32_t run = 0;
-      long score = 0;
+      int64_t score = 0;
       for (uint32_t i = 0; i < w->nhb; i++) {
         hbmeta_t *hb = &w->hb[i];
         if (hb->used != 0 || hb->releasing != 0) { run = 0; score = 0; continue; }
@@ -401,7 +404,7 @@ static uintptr_t ph_alloc_hbs(size_t k, bool *zero) {
         if (++run > nh) score -= __builtin_popcount(w->hb[i - nh].dirty);
         if (run >= nh && score > bscore) {
           bw = w; bfirst = i + 1 - nh; bscore = score;
-          if (score == (long)nh * HB_SLICES) break;
+          if (score == perfect) break;
         }
       }
     }
