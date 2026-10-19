@@ -358,8 +358,8 @@ if responsible: resolve(page) [or push to the pending stack if reentrant]
   | x86-64 glibc | run |
   | x86-64 musl, static and dynamic | run |
   | aarch64 glibc, under `qemu-aarch64` | run |
-  | i386 (`-m32`) | run, if multilib is available |
-  | armhf, under `qemu-arm` | run, if the cross-compiler is available |
+  | armhf (32-bit), under `qemu-arm -L /usr/arm-linux-gnueabihf` | run; this is the 32-bit target |
+  | i386 (`-m32`) | not available: Ubuntu's multilib conflicts with the cross-compilers |
   | x86-64 Windows (mingw) | builds the prefixed library and tests; runs them under `wine` (installed) |
   | macOS | code paths behind `__APPLE__` (`MADV_FREE_REUSABLE`, no `getauxval`); compile-reviewed only |
 
