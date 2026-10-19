@@ -255,17 +255,27 @@ static heap_t *heap_attach(void) {
 
 static void deferred_drain(soham_tls_t *t);
 
+/* Thread exit (the OS layer's key destructor / FLS callback).  The heap
+ * comes from the callback argument, not from TLS: with emulated TLS
+ * (mingw-w64 emutls) the thread's TLS block may already have been destroyed
+ * and replaced by a fresh zeroed one when this runs, and the heap must be
+ * detached anyway (tests/regress/thread_exit_detach.c). */
 static void thread_exit_cb(void *v) {
-  soham_tls_t *t = &t_tls;
   heap_t *h = (heap_t *)v;
-  if (!h || t->heap != h) return;
-  deferred_drain(t);
-  atomic_store_explicit(&t->busy, 1, memory_order_relaxed);
-  signal_fence();
+  if (!h || !h->live) return;
+  soham_tls_t *t = &t_tls;
+  bool mine = (t->heap == h);
+  if (mine) {
+    deferred_drain(t);
+    atomic_store_explicit(&t->busy, 1, memory_order_relaxed);
+    signal_fence();
+  }
   heap_flush(h);
-  t->heap = NULL;
-  t->tag = 0;
-  t->state = TLS_DEAD;
+  if (mine) {
+    t->heap = NULL;
+    t->tag = 0;
+    t->state = TLS_DEAD;
+  }
   soham_lock(&g_heap_lock);
   h->live = 0;
   h->busy_ptr = NULL;
@@ -273,8 +283,10 @@ static void thread_exit_cb(void *v) {
   g_heap_pool = h;
   g_heaps_live--;
   soham_unlock(&g_heap_lock);
-  signal_fence();
-  atomic_store_explicit(&t->busy, 0, memory_order_relaxed);
+  if (mine) {
+    signal_fence();
+    atomic_store_explicit(&t->busy, 0, memory_order_relaxed);
+  }
 }
 
 /* Frees made by signal handlers that could not run in handler context. */

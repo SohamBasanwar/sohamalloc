@@ -217,7 +217,9 @@ static void test_usable_and_enomem(void)
         memset(tu_launder(p), 3, u);
         soham_free(p);
     }
-    size_t bad[] = { SIZE_MAX, SIZE_MAX - 16, SIZE_MAX - 4096, (size_t)PTRDIFF_MAX + 1, (size_t)PTRDIFF_MAX };
+    size_t bad[] = { SIZE_MAX, SIZE_MAX - 16, SIZE_MAX - 4096, (size_t)PTRDIFF_MAX + 1,
+                     /* PTRDIFF_MAX itself (2 GiB - 1) can succeed on 32-bit with a 4 GiB address space */
+                     sizeof(size_t) == 8 ? (size_t)PTRDIFF_MAX : SIZE_MAX - 4097 };
     for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
         errno = 0;
         TU_CHECK(soham_malloc(bad[i]) == NULL, "soham_malloc(%zu) succeeded", bad[i]);

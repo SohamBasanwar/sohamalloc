@@ -25,7 +25,17 @@
 #include "common/test_util.h"
 
 #include <sched.h>
-#if defined(__has_include)
+/* ThreadSanitizer does not intercept glibc's thrd_create (it calls the
+   internal pthread_create directly), so a C11 thread is unknown to TSan and
+   crashes in __tsan_func_entry: use the pthread fallback under TSan. */
+#if defined(__SANITIZE_THREAD__)
+#  define TU_TSAN 1
+#elif defined(__has_feature)
+#  if __has_feature(thread_sanitizer)
+#    define TU_TSAN 1
+#  endif
+#endif
+#if defined(__has_include) && !defined(TU_TSAN)
 #  if __has_include(<threads.h>) && !defined(__STDC_NO_THREADS__) && !defined(_WIN32)
 #    include <threads.h>
 #    define HAVE_C11_THREADS 1
@@ -88,6 +98,14 @@ static size_t reclaim(size_t max, const char *who)
 }
 
 /* ------------------------------------------------------------- destructors */
+/* TSan finishes a thread from its own TSD destructor in a late destructor
+   round; a destructor running after that crashes the TSan runtime, so the
+   re-arming destructor re-arms only once under TSan. */
+#ifdef TU_TSAN
+#  define REARM_ROUNDS 1
+#else
+#  define REARM_ROUNDS 3
+#endif
 static pthread_key_t key_rearm, key_plain;
 static _Atomic unsigned long dtor_rearm_calls, dtor_plain_calls, tss_dtor_calls;
 
@@ -191,7 +209,7 @@ static void churn_body(unsigned idx)
         }
         break;
     case 2: {
-        void *t = make_tagged(200 + idx % 500, base, 3);
+        void *t = make_tagged(200 + idx % 500, base, REARM_ROUNDS);
         if (pthread_setspecific(key_rearm, t) != 0) TU_FAIL("pthread_setspecific");
         void *u = make_tagged(5000, base + 1, 0);
         if (pthread_setspecific(key_plain, u) != 0) TU_FAIL("pthread_setspecific");
@@ -352,8 +370,8 @@ int main(int argc, char **argv)
     /* kind 2: one plain destructor call and 4 re-arm rounds (3 re-arms). */
     TU_CHECK(atomic_load(&dtor_plain_calls) == n_kind2, "plain destructor calls %lu, want %lu",
              atomic_load(&dtor_plain_calls), n_kind2);
-    TU_CHECK(atomic_load(&dtor_rearm_calls) == 4 * n_kind2, "re-arm destructor calls %lu, want %lu",
-             atomic_load(&dtor_rearm_calls), 4 * n_kind2);
+    TU_CHECK(atomic_load(&dtor_rearm_calls) == (REARM_ROUNDS + 1) * n_kind2, "re-arm destructor calls %lu, want %lu",
+             atomic_load(&dtor_rearm_calls), (REARM_ROUNDS + 1) * n_kind2);
 #ifdef HAVE_C11_THREADS
     TU_CHECK(atomic_load(&tss_dtor_calls) == n_c11, "tss destructor calls %lu want %lu",
              atomic_load(&tss_dtor_calls), n_c11);

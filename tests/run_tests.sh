@@ -126,7 +126,7 @@ case "$CROSS" in
     mingw)
         CC=x86_64-w64-mingw32-gcc-posix; CXX=x86_64-w64-mingw32-g++-posix
         RUNNER=(wine); EXE=".exe"
-        TARGET_LIBS=""; EXTRA_LDFLAGS="-static"
+        TARGET_LIBS="-lbcrypt"; EXTRA_LDFLAGS="-static"   # os_windows.c: BCryptGenRandom
         TIMEOUT_MULT=4 ;;
     *) die "unknown --cross target '$CROSS' (aarch64, armhf, musl, mingw)" ;;
 esac
@@ -138,6 +138,8 @@ fi
 
 # ---------------------------------------------------------------- what is under test
 VARIANT="${CROSS:-native}"
+# A non-default native compiler gets its own output directory.
+if [ -z "$CROSS" ] && [ "$CC_NATIVE" != gcc ]; then VARIANT="native-$(basename "$CC_NATIVE")"; fi
 SOHAM=0            # the allocator under test is sohamalloc (exports soham_version)
 lib_exports_soham() { nm -D --defined-only "$1" 2>/dev/null | grep -qw soham_version || nm --defined-only "$1" 2>/dev/null | grep -qw soham_version; }
 if [ "$PREFIXED" = 1 ]; then
@@ -169,8 +171,11 @@ WARN="-Wall -Wextra -Wno-alloc-size-larger-than -Wno-unused-function"
 case "$CC" in *gcc*) WARN="$WARN -Wno-use-after-free -Wno-free-nonheap-object -Wno-stringop-overflow -Wno-array-bounds" ;; esac
 CFLAGS="-std=c11 -O2 -g -pthread $WARN $NOBUILTIN -I$TESTS -I$REPO/include"
 CXXFLAGS="-std=c++17 -O2 -g -pthread $WARN $NOBUILTIN -I$TESTS -I$REPO/include"
-case "$CXX" in *g++*) CXXFLAGS="$CXXFLAGS -fno-allocation-dce -Wno-mismatched-new-delete" ;; esac
-case "$CXX" in *clang++*) CXXFLAGS="$CXXFLAGS -fno-assume-sane-operator-new" ;; esac
+# (clang++ first: "clang++" also matches *g++*)
+case "$CXX" in
+    *clang++*) CXXFLAGS="$CXXFLAGS -fno-assume-sane-operator-new -fsized-deallocation" ;;
+    *g++*) CXXFLAGS="$CXXFLAGS -fno-allocation-dce -Wno-mismatched-new-delete" ;;
+esac
 SANFLAGS=""
 case "$SANITIZE" in
     thread) SANFLAGS="-fsanitize=thread -O1" ;;
@@ -198,6 +203,7 @@ thread_churn       prefixed/thread_churn.c       c    600
 stats_api          prefixed/stats_api.c          c    180  soham
 internal_props     prefixed/internal_props.c     c    120  soham
 regress_check_heap regress/check_heap_concurrent.c c  120  soham
+regress_thread_detach regress/thread_exit_detach.c c   60  soham
 "
 else
     TABLE="
@@ -302,7 +308,7 @@ for name in "${NAMES[@]}"; do
         continue
     fi
     if [[ "${SRC[$name]}" == regress/* ]] && [[ " ${FLAGS[$name]} " == *" soham "* ]] && [ "$SOHAM" != 1 ]; then
-        status=SKIP; detail="sohamalloc regression reproducer (other allocators may deadlock)"
+        status=SKIP; detail="sohamalloc-only regression reproducer"
         nskip=$((nskip + 1))
         printf '%-20s %-14s %8s  %s\n' "$name" "$status" "-" "$detail"
         RESULTS+=("$name $status")

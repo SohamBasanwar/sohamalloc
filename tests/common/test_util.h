@@ -166,6 +166,8 @@ void tu_fail_at(const char *file, int line, const char *fmt, ...)
 }
 
 #define TU_FAIL(...) tu_fail_at(__FILE__, __LINE__, __VA_ARGS__)
+/* Note: the condition's text is pasted into the format string, so it must
+   not contain '%' (write (x & (a - 1)) == 0 rather than x % a == 0). */
 #define TU_CHECK(cond, ...) \
     do { if (TU_UNLIKELY(!(cond))) tu_fail_at(__FILE__, __LINE__, "check `" #cond "` failed: " __VA_ARGS__); } while (0)
 

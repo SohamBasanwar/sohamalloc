@@ -16,8 +16,8 @@ bench/workloads/              realistic workloads: py_alloc.py, gen_cxx.py, sqli
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j4   # sohamalloc
 MIMALLOC_BENCH_DIR=/path/to/mimalloc-bench bench/build_bench.sh            # or let it clone
-bench/run_bench.sh                       # all 5 allocators, 3 reps, ~22 min on 4 vCPUs
-bench/run_bench.sh --quick               # 1 rep, smaller arguments, ~4 min
+bench/run_bench.sh                       # all 5 allocators, 3 reps: 1043 s (17.4 min) on the reference VM
+bench/run_bench.sh --quick               # 1 rep, smaller arguments: 298 s (5 min)
 bench/run_bench.sh --only cfrac,larsonN,redis --allocs "mimalloc sohamalloc" --reps 5
 bench/run_bench.sh --list                # benchmark names and full commands
 ```
@@ -98,7 +98,9 @@ A failing run is excluded from the medians. It appears in the report's Failures 
 
 ## Limitations (read before quoting numbers)
 
-- **Shared, noisy VM.** The reference machine is a 4-vCPU cloud VM (Xeon @ 2.8 GHz, Linux 6.18) with no CPU pinning, frequency control or isolation, and other tenants. Run-to-run spread of 5–10% is normal, and more on the multi-threaded and fixed-duration benchmarks. Three repetitions with a median give a rough estimate, not a statistical test. For decisions, rerun the benchmarks in question with `--reps 7` or more.
+- **Shared, noisy VM.** The reference machine is a 4-vCPU cloud VM (Xeon @ 2.8 GHz, Linux 6.18) with no CPU pinning, frequency control or isolation, and other tenants. Run-to-run spread of 10–30% is normal, and the multi-threaded and fixed-duration benchmarks can spread by 50–170%.
+  - **CPU steal is visible in the CSV.** For example, glibc-thread runs 4 threads for 2 s, so it should use 8 CPU-seconds, but the `user_s` column shows 3.9–7.9 s for the same allocator. The fixed-duration benchmarks (†) suffer most, because lost CPU time directly lowers their throughput.
+  - **Treat the results as estimates.** Three repetitions with a median give a rough estimate, not a statistical test. For decisions, rerun the benchmarks in question with `--reps 7` or more, for example `--only larsonN,glibc-thread --reps 9`.
 - **Only 4 cores.** All `*N` benchmarks use 4 threads. Allocators built for many cores (per-CPU caches, many arenas) cannot show scaling behaviour here, and contention effects are muted.
 - **Competitor versions** are the Ubuntu 24.04 packages, not the upstream heads that mimalloc-bench builds:
   - jemalloc 5.3.0 (`libjemalloc2 5.3.0-2build1`), with default config and background threads off.
@@ -111,6 +113,30 @@ A failing run is excluded from the medians. It appears in the report's Failures 
 - **redis is the distro build.** It links libjemalloc for `mallctl`, `nallocx` and `malloc_stats_print`, while `malloc`, `free`, `calloc`, `realloc` and `malloc_usable_size` are interposed by the preload. mimalloc-bench instead builds redis with `USE_JEMALLOC=no`. Under preload, redis' `INFO memory` allocator statistics are meaningless, but the workload itself is valid. The client runs with glibc, and the client and server share the 4 cores.
 - **CPython uses pymalloc.** The `python` benchmark mostly stresses pymalloc arenas and medium or large objects. `python-malloc` (`PYTHONMALLOC=malloc`) is the variant where the allocator under test sees every object.
 - **No security benchmark.** mimalloc-bench's `security` suite and the large external workloads (lean, z3, rocksdb, SPEC, Linux build, ruby) are not part of this harness, because they are unavailable offline or too long for the time budget.
+
+## Reference run (2026-10-19, sohamalloc 4ce8508)
+
+This is a snapshot of `bench/out/report.md`, which is git-ignored. It comes from the full default run: 5 allocators, 3 repetitions, 24 benchmarks, 360 runs and 0 failures, in 1043 s.
+
+| allocator | time geomean | rss geomean | score | time (mimalloc-bench) | time (apps) |
+|---|---:|---:|---:|---:|---:|
+| mimalloc 2.1.2 | 1.064 | 1.241 | **1.149** | 1.061 | 1.079 |
+| sohamalloc 0.1 | 1.183 | 1.303 | **1.241** | 1.231 | 1.014 |
+| glibc 2.39 | 1.515 | 1.097 | **1.289** | 1.620 | 1.174 |
+| jemalloc 5.3.0 | 1.312 | 1.375 | **1.343** | 1.391 | 1.050 |
+| tcmalloc (gperftools 2.15) | 1.304 | 1.539 | **1.417** | 1.380 | 1.051 |
+
+**Where sohamalloc stands.**
+
+- **Overall:** second by combined score. It is best on time for the five apps (python, python-malloc, gxx, sqlite, redis: geomean 1.014) and fastest on 7 of 24 benchmarks.
+- **Head-to-head on time:** it beats glibc on 18 of 24 benchmarks, jemalloc on 14 and tcmalloc on 11, and trails mimalloc on 14.
+
+**Weak spots.**
+
+- **malloc-large: 2.9× slower than the best.** Its system time is 4.7 s against 0.3–0.6 s for glibc and tcmalloc, from about 1.8M minor faults per run against 225k for glibc. The cause is the documented *excess release* (`docs/IMPLEMENTATION_NOTES.md`): free memory above max(32 MiB, used/8) is `madvise`d at once, so 5–25 MiB blocks are refaulted on reuse. jemalloc 5.3 behaves the same way through its oversize arena. The other side of this trade-off is that sohamalloc has the lowest peak RSS on this benchmark.
+- **Thread-heavy fixed-duration benchmarks:** glibc-thread is 1.5× slower than the best, and larsonN and larsonN-sized are 1.2–1.4×. These benchmarks are also the noisiest (spread 46–93%).
+- **alloc-test1: 1.4× slower than the best.**
+- **RSS on small C processes:** on cfrac, espresso, glibc-simple and glibc-thread, peak RSS is 1.6–3.2 MiB above glibc's, a 1.6–2.3× ratio. rptestN uses 2.0× glibc's RSS (30.5 vs 15.3 MiB).
 
 ## Build notes and skips
 

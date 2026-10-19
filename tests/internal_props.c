@@ -209,8 +209,9 @@ static void test_geometry(void)
     if (geo.window != wdef) tu_info("NOTE window %zu != default %zu (finite RLIMIT_AS?)", geo.window, wdef);
     TU_CHECK(geo.record_size == 192, "record size %zu", geo.record_size);
     TU_CHECK(geo.solo_threshold == ((size_t)32 << 20), "solo threshold %zu", geo.solo_threshold);
-    TU_CHECK(geo.rec_off % B == 0 && geo.rec_off > B, "rec_off %zu (B %zu)", geo.rec_off, B);
-    TU_CHECK(geo.data_off % H == 0, "data_off %zu not hugeblock-aligned", geo.data_off);
+    /* (no % in TU_CHECK conditions: the condition text becomes part of the format) */
+    TU_CHECK((geo.rec_off & (B - 1)) == 0 && geo.rec_off > B, "rec_off %zu (B %zu)", geo.rec_off, B);
+    TU_CHECK((geo.data_off & (H - 1)) == 0, "data_off %zu not hugeblock-aligned", geo.data_off);
     size_t rec_end = geo.rec_off + geo.window / S * geo.record_size;
     TU_CHECK(geo.data_off >= rec_end + B, "data_off %zu leaves no guard page after the records (end %zu)",
              geo.data_off, rec_end);

@@ -218,7 +218,9 @@ static void handler_free_reserve()
 
 static void test_failures()
 {
-    const size_t huge = (size_t)PTRDIFF_MAX - 4096;
+    /* Larger than PTRDIFF_MAX: impossible everywhere (PTRDIFF_MAX - 4 KiB
+       is a valid 2 GiB request on 32-bit targets with a 4 GiB address space). */
+    const size_t huge = (size_t)PTRDIFF_MAX + 4096;
     bool threw = false;
     try {
         void *p = ::operator new(huge);

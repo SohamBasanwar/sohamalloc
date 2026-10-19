@@ -323,7 +323,12 @@ def main():
     benches = bench_table(a.threads, python)
     if a.list:
         for b in benches:
-            print("%-16s %s" % (b.name, " ".join(b.argv)))
+            env = " ".join("%s=%s" % kv for kv in b.env.items())
+            cmd = " ".join(b.argv) if b.kind != "redis" else \
+                "redis-server (unix socket) + redis-benchmark -n 100000 -P 16 -r 100000 -d 64"
+            print("%-16s %s%s%s%s" % (b.name, env + " " if env else "", cmd,
+                                      " < " + b.stdin if b.stdin else "",
+                                      "   [relative time]" if (b.metric or b.kind == "redis") else ""))
         return 0
     if a.only:
         want = [w.strip() for w in a.only.split(",") if w.strip()]

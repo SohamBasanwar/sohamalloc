@@ -21,6 +21,10 @@
 
 #include <stdbool.h>
 
+#ifndef M_MMAP_THRESHOLD
+#define M_MMAP_THRESHOLD (-3)     /* glibc's value; musl's <malloc.h> lacks mallopt */
+#endif
+
 #ifndef SIZE_MAX
 #error SIZE_MAX
 #endif
@@ -473,7 +477,9 @@ static void test_usable_size(void)
 static void test_enomem(void)
 {
     size_t bad[] = { SIZE_MAX, SIZE_MAX - 1, SIZE_MAX - 15, SIZE_MAX - 16, SIZE_MAX - 4096,
-                     SIZE_MAX - (2u << 20), (size_t)PTRDIFF_MAX + 1, (size_t)PTRDIFF_MAX };
+                     SIZE_MAX - (2u << 20), (size_t)PTRDIFF_MAX + 1,
+                     /* PTRDIFF_MAX itself (2 GiB - 1) can succeed on 32-bit with a 4 GiB address space */
+                     sizeof(size_t) == 8 ? (size_t)PTRDIFF_MAX : SIZE_MAX - 4097 };
     for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
         errno = 0;
         void *p = malloc(bad[i]);
