@@ -131,7 +131,7 @@ static void fork_prepare(void);
 static void fork_parent(void);
 static void fork_child(void);
 
-static unsigned log2_exact(size_t v) { return (unsigned)__builtin_ctzl((unsigned long)v); }
+static unsigned log2_exact(size_t v) { return (unsigned)__builtin_ctzll((unsigned long long)v); }
 
 static size_t pow2_floor(size_t v) {
   size_t p = 1;
@@ -155,6 +155,7 @@ static bool geometry_init(void) {
   size_t Wmin = 64 * MiB;
   unsigned va_bits = 32;
 #endif
+  if (SOHAM_TSAN) W = 256 * MiB;
   size_t lim = soham_os_as_limit();
   if (lim != SIZE_MAX) {
     size_t t = pow2_floor(lim / 8);

@@ -77,6 +77,19 @@
 #  define SOHAM_ADDR_MASK (~(uintptr_t)0)
 #endif
 
+/* ThreadSanitizer reserves most of the 47-bit address space for shadow
+ * memory: use small windows and let the kernel place them. */
+#if defined(__SANITIZE_THREAD__)
+#  define SOHAM_TSAN 1
+#elif defined(__has_feature)
+#  if __has_feature(thread_sanitizer)
+#    define SOHAM_TSAN 1
+#  endif
+#endif
+#ifndef SOHAM_TSAN
+#  define SOHAM_TSAN 0
+#endif
+
 #if SOHAM_DEBUG
 #  define SOHAM_ASSERT(c) do { if (unlikely(!(c))) soham_fatal("assertion failed: " #c, (uintptr_t)__LINE__); } while (0)
 #else

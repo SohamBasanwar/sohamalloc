@@ -48,7 +48,7 @@ static size_t class_size_formula(unsigned c) {
 /* Size -> class for 1024 < n <= 256 KiB (plan §5.3 formula). */
 SOHAM_INLINE unsigned size_class_large(size_t n) {
   size_t m = n - 1;
-  unsigned lg = (unsigned)(sizeof(size_t) * 8 - 1) - (unsigned)__builtin_clzl((unsigned long)m);
+  unsigned lg = 63u - (unsigned)__builtin_clzll((unsigned long long)m);
   return 32u + 4u * (lg - 10u) + (unsigned)((m >> (lg - 2)) & 3u);
 }
 
@@ -200,13 +200,16 @@ static window_t *window_create(void) {
   uint64_t r = mix64(g_rng_seed + 0x51ed27ull * (g_ph.nwindows + 1));
   uintptr_t lo = (uintptr_t)1 << 40, span = ((uintptr_t)1 << 46) - lo;
   hint = (lo + (uintptr_t)(r % span)) & ~g_geo.wmask;
+  if (SOHAM_TSAN) hint = 0;
 #endif
   void *p = NULL;
   for (int tries = 0; tries < 4 && !p; tries++) {
     p = soham_os_reserve_aligned(g_geo.W, g_geo.W, hint);
 #if SOHAM_64BIT
-    hint = (hint + ((uintptr_t)(mix64(r + (uint64_t)tries) % 61 + 1) << g_geo.wshift)) & (((uintptr_t)1 << 46) - 1) & ~g_geo.wmask;
-    if (hint < ((uintptr_t)1 << 40)) hint += (uintptr_t)1 << 40;
+    if (hint) {
+      hint = (hint + ((uintptr_t)(mix64(r + (uint64_t)tries) % 61 + 1) << g_geo.wshift)) & (((uintptr_t)1 << 46) - 1) & ~g_geo.wmask;
+      if (hint < ((uintptr_t)1 << 40)) hint += (uintptr_t)1 << 40;
+    }
 #endif
   }
   if (!p) return NULL;
