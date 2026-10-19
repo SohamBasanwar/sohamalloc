@@ -1,0 +1,485 @@
+{
+ "contributions": [
+  {
+   "name": "Out-of-line slice records split into three cache lines by writer",
+   "description": "Every 64 KiB slice has a 192-byte record made of three 64-byte lines with different writers. Line O is written only by the owning heap (local free list, provisioning cursor, list links). Line R is written only at page init, claim and detach (owner tag, head_delta, key, geometry). Line X is written by remote freers (xfree word, folded count, pool and notify links). The records sit in a committed MADV_NOHUGEPAGE area at the start of each W-aligned window (W = 4 GiB on 64-bit), and a PROT_NONE gap separates them from the data. A record's address is computed arithmetically from the block address.",
+   "closest_prior_work": [
+    "GrapheneOS hardened_malloc: all mutable allocator state in a dedicated metadata region",
+    "PartitionAlloc: metadata in the first partition page of a 2 MiB super page, which is bracketed by guard pages ('Linear overflows/underflows cannot corrupt the allocation metadata')",
+    "isoalloc: bitmaps allocated separately from user chunks and surrounded by PROT_NONE guards",
+    "mimalloc v3.3.0 (2026-04-15): page meta info kept separate from allocated objects by default",
+    "SuperMalloc (Kuszmaul, ISMM 2015): 2 MiB chunks plus an array that maps chunk numbers to metadata",
+    "snmalloc (Lietar et al., ISMM 2019): pagemap and out-of-band slab metadata",
+    "SJMalloc (2024): out-of-band metadata",
+    "Hoard (Berger et al., ASPLOS 2000): avoiding allocator-induced false sharing"
+   ],
+   "verdict": "incremental",
+   "reasoning": "Out-of-line metadata behind guards, found by address arithmetic, is well established: hardened_malloc, PartitionAlloc, isoalloc, SuperMalloc and mimalloc v3 all do it. I found no published allocator that documents this exact three-way split of per-slice metadata by writer class (owner, read-mostly, remote). The split is still a standard false-sharing layout discipline applied to a record, not a new mechanism. The project has no ablation of it: nothing in bench/out or the transcript compares one line against three. One claim needs care. README.md says 'A heap overflow cannot corrupt the allocator', but free-list links remain inline in freed blocks, as in PartitionAlloc. A linear overflow can still corrupt an encoded link; it is detected only with some probability by decode plus the bounds check. A paper should state the narrower property: records are unreachable by linear overflow, links are encoded and checked.",
+   "evidence_in_project": "docs/IMPLEMENTATION_NOTES.md \u00a72 (address-space layout) and \u00a73 (record table); src/internal.h (record layouts); docs/SOHAMALLOC_PLAN.md \u00a71.1 item 5; first implemented in commit 67a8520 (2026-10-19T06:01:34Z)."
+  },
+  {
+   "name": "Granule map for classifying foreign pointers on every free",
+   "description": "gmap is a byte map with one entry per W-sized granule of the 48-bit address space (2^16 entries with 4 GiB windows). Every free computes g = (a >> wshift) & gmask and loads one byte. Before init, gmask is 0 and gmap points to a 1-byte zero map, so every pointer counts as foreign; the mask is published last, with release semantics. A free of a foreign pointer is leaked with a warning, or aborts in secure mode.",
+   "closest_prior_work": [
+    "snmalloc (ISMM 2019) global pagemap: 'a single byte per chunk' (16 MiB chunks) covering the 48-bit address space, with an 'Unknown: Not managed by snmalloc' state that is the zero value",
+    "isoalloc: aborts when passed a pointer it does not own (ABORT_ON_UNOWNED_PTR)",
+    "hardened_malloc: deterministic detection of invalid frees",
+    "jemalloc rtree, TCMalloc pagemap, mimalloc page map (address-to-metadata maps)"
+   ],
+   "verdict": "known",
+   "reasoning": "snmalloc's ISMM 2019 paper describes the same structure: a flat one-byte-per-chunk map of the 48-bit address space whose zero value means 'not managed'. sohamalloc differs only in granule size (4 GiB windows against 16 MiB chunks). Using the zero map before init is a tidy engineering detail with no research significance on its own. Leaking or aborting on unowned pointers is published in isoalloc and hardened_malloc.",
+   "evidence_in_project": "docs/IMPLEMENTATION_NOTES.md \u00a72 ('Granule map'); README.md feature table; plan \u00a75.2."
+  },
+  {
+   "name": "bswap/XOR/address-keyed free-list link encoding with a bounds check",
+   "description": "K = page_key ^ (a >> 12); stored = bswap(next ^ K); decoded = bswap(stored) ^ K. The key is random per page. bswap is the outermost operation, so a partial overwrite corrupts the high bits of the decoded pointer. The decoded next is checked against the page bounds on every allocation pop.",
+   "closest_prior_work": [
+    "glibc Safe-Linking (Check Point Research 2020; glibc 2.32): PROTECT(P) = (L >> PAGE_SHIFT) XOR P, plus an alignment check on reveal",
+    "PartitionAlloc EncodedNextFreelistEntry: byte reversal so the swapped pointer is non-canonical and 'partial pointer overwrite attacks are thwarted'",
+    "mimalloc secure mode: per-page keys, encoding ((p^k2)<<<k1)+k1, and a check that the decoded next is in the same page",
+    "snmalloc free-list protection: XOR involution forward pointers plus signed back-pointers checked on consumption",
+    "Chromium tcmalloc MaskPtr (2012), per the Check Point article"
+   ],
+   "verdict": "known",
+   "reasoning": "Each element is published. The address term comes from glibc Safe-Linking, the outer byte swap and its partial-overwrite rationale from PartitionAlloc, the per-page random key and the same-page bounds check from mimalloc. Composing them gives at most the union of their properties; I found no new security property. snmalloc's signed back-pointers detect more corruption (consumption-order checking). The plan itself credits PartitionAlloc and glibc (plan \u00a75.12), and its S0 threat model says one leaked link plus a known address recovers a page's key, because S0 provisions blocks in address order. Neither the security effect nor the cost was measured in isolation: bench/README.md says 'No security benchmark'.",
+   "evidence_in_project": "src/internal.h lines ~371-383 (link_enc/link_dec); docs/IMPLEMENTATION_NOTES.md \u00a73 'Link encoding'; plan \u00a75.5.2 and \u00a75.12."
+  },
+  {
+   "name": "Async-signal-safe malloc/free through a per-thread busy byte",
+   "description": "A TLS busy byte is set around every allocator operation of the thread: both fast paths, slow paths, init and heap attach, thread exit, collect, stats and check. A signal handler that finds it set never touches the thread's heap and never waits on a lock. Its mallocs go to a shared heap through trylock-only 'trymode', falling back to a static .bss arena. Its frees use the lock-free remote-free CAS; page resolution is deferred through a global pending stack, and runs and solos go on a TLS deferred list drained at the thread's next allocator call. From commit 13bcf17 one busy byte gates both fast paths.",
+   "closest_prior_work": [
+    "Michael, 'Scalable Lock-Free Dynamic Memory Allocation', PLDI 2004: a complete lock-free malloc/free, keyword 'async-signal-safe', usable 'even in interrupt handlers'",
+    "LRMalloc (Leite & Rocha, 2018): lock-free general-purpose allocator",
+    "libatomic_ops AO_malloc: almost-lock-free allocator intended for allocation from signal handlers",
+    "folly ReentrantAllocator: multi-thread-safe and async-signal-safe, mmap-based, special-purpose",
+    "Linux bpf_mem_alloc (kernel/bpf/memalloc.c): per-CPU 'active' counter detects reentry from NMI, and unit_free defers to free_llist_extra when busy",
+    "Linux kmalloc_nolock() (Starovoitov, slab v5, Sept 2025; Babka, Jan 2026): allocation from any context including NMI, trylock-based, 'retry with the larger bucket' on trylock failure"
+   ],
+   "verdict": "novel-combination",
+   "reasoning": "Low confidence. The property itself, async-signal-safe general-purpose malloc and free, was published by Michael (2004) through full lock-freedom. The mechanism (a reentrancy flag, trylock-only allocation, fallback to another pool, deferred frees) is published in Linux kernel allocators: bpf_mem_alloc and kmalloc_nolock. I found no published user-space, thread-caching, general-purpose allocator that documents this guarantee using this mechanism while keeping a conventional lock-based slow path. So the combination may be new, but the parts are known, and a reviewer would treat it as an engineering contribution unless it comes with a proof sketch or model check of the handler paths and a systematic adversarial test (signals injected at random instruction points). Current evidence is thin. One cross-allocator test was run once with a 30 s timeout: glibc and jemalloc were killed (rc=143); mimalloc, gperftools tcmalloc and sohamalloc passed. The first README draft claimed tcmalloc also deadlocks; measurement corrected it. A later deadlock was found in sohamalloc itself: thread setup, exit, stats and check took locks without the busy flag set. The fast-path cost of the busy byte has not been isolated. IMPLEMENTATION_NOTES \u00a79 attributes the gap between ~41/50 instructions and mimalloc's ~18/29 to encoding, foreign-pointer detection and the busy byte together.",
+   "evidence_in_project": "docs/IMPLEMENTATION_NOTES.md \u00a74 (invariant H2), \u00a75.4, \u00a76 (trymode), \u00a78 deviation 6; tests/regress/signal_reentrant_enomem.c; tests/regress/signal_thread_attach.c; cross-allocator run in transcript at 2026-10-19T06:31:38Z (glibc, jemalloc 'Terminated rc=143'; mimalloc, tcmalloc, sohamalloc 'PASS'); README wording corrected at 2026-10-19T06:31:47Z; commit e70903f (2026-10-19T06:26:51Z, handler mallocs use the shared heap); commit 273bcb9 (2026-10-19T13:30:07Z, busy discipline for init/attach; per the summary at 2026-10-19T13:52:50Z the new regression test hung in 5 of 6 runs before the fix and 0 of 15 after); commit 13bcf17 (2026-10-19T13:54:19Z, one busy byte gates both fast paths)."
+  },
+  {
+   "name": "One-CAS remote free with ORPHAN/QUEUED/PENDING states",
+   "description": "A remote free pushes the block onto the page's xfree word (count | head | flags) with one acq_rel CAS. The CAS can also drop WATCH, which notifies the owner. If the page is ORPHAN or QUEUED and the count crosses cap/8 or reaches cap, the CAS sets PENDING, and the thread that wins it becomes responsible for resolve(). Two double-free checks run in the CAS loop: head == a, and count > cap. A claimer takes the chain with xchg(xfree, 0) and walks exactly count minus folded nodes, validating each.",
+   "closest_prior_work": [
+    "mimalloc (Leijen, Zorn, de Moura, APLAS 2019; MSR-TR-2019-18): free-list sharding with a separate per-page thread-free list, so a cross-thread free is one CAS",
+    "mimalloc v2 free.c: delayed-free state (MI_USE_DELAYED_FREE, MI_DELAYED_FREEING) packed into the xthread_free word",
+    "mimalloc v3 free.c: an 'owned' bit in xthread_free; the freeing thread that newly owns an abandoned page collects, reclaims or re-abandons it",
+    "mimalloc page.c: bounded collect that reports 'corrupted thread-free list (possibly due to a cross-thread double free)'",
+    "rpmalloc: 'cross-thread deallocations will be deferred to the owner thread through a separate atomic free list per page'",
+    "snmalloc (ISMM 2019): batched message-passing remote frees, an alternative design"
+   ],
+   "verdict": "known",
+   "reasoning": "The protocol class is published in mimalloc v2 and v3 and in rpmalloc: a per-page atomic list of remote frees, state bits packed into the same word, and responsibility handed to the thread whose CAS changes the state. sohamalloc's state names and thresholds differ, and its exact-count chain walk and count-greater-than-capacity check are a modest hardening over mimalloc's bounded walk. These are details, not a new protocol. The protocols were not model-checked; the plan proposed GenMC, but I found no run in the record.",
+   "evidence_in_project": "docs/IMPLEMENTATION_NOTES.md \u00a75.1 and \u00a75.3; src/heap.c remote_free() (line ~419), page_detach(), pool_claim(); commit 44e39e4 (2026-10-19T06:22:03Z)."
+  },
+  {
+   "name": "Owner notification with an unfull threshold (WATCH, hysteresis)",
+   "description": "When a heap retires its exhausted current page to its full list, it sets WATCH with a CAS that succeeds only if the remote count is zero. The remote free that brings the count to unfull = max(1, cap/8) clears WATCH and pushes the page onto the owner's Treiber notify stack. The owner drains that stack on refill and moves still-valid pages from full to avail. Local frees use the same cap/8 threshold.",
+   "closest_prior_work": [
+    "mimalloc v2 delayed free: for a page in the full queue, the first concurrent free pushes onto heap->thread_delayed_free, and the owner collects it",
+    "mimalloc _mi_page_unfull: a full page returns to a regular queue on a local free",
+    "mimalloc v3 free.c: an abandoned page is re-abandoned to the arena only once it is below 7/8 used ('1/8th should be free')",
+    "Hoard (ASPLOS 2000): emptiness threshold f and K superblocks, a hysteresis bound on moving superblocks"
+   ],
+   "verdict": "incremental",
+   "reasoning": "Notifying the owner when a full page receives remote frees is mimalloc v2's delayed-free mechanism. sohamalloc's change is to notify at a threshold instead of the first free, and to use the same threshold for local frees: a hysteresis refinement. The 1/8 constant matches mimalloc v3's reabandon rule, and threshold hysteresis goes back to Hoard. The design was driven by measurement. Per IMPLEMENTATION_NOTES \u00a75.2, first-free return sent 28% of alloc-test mallocs through the slow path, and the threshold brought this to 0.07%, at a cost of at most cap/8 - 1 idle blocks per full page. I found that figure in the notes and in the session summary, not in raw output in the main transcript. It may be in a sub-agent transcript; treat it as unverified until located. A paper needs an ablation against first-free notification across workloads, and a memory-cost measurement.",
+   "evidence_in_project": "docs/IMPLEMENTATION_NOTES.md \u00a75.2 ('Why a threshold'); docs/IMPLEMENTATION_NOTES.md \u00a78 deviation 1 (owner-retained pages after the spec's detach-on-full measured 0.16 s against mimalloc's 0.09 s); commit 44e39e4 (2026-10-19T06:22:03Z, owner-retained pages with notification); commit 273bcb9 (2026-10-19T13:30:07Z, refill hysteresis); session summary at 2026-10-19T13:52:50Z ('fell from 28% of mallocs to 0.07%')."
+  },
+  {
+   "name": "Detach and claim of exited threads' pages into per-class pools",
+   "description": "At thread exit the holder detaches each page. It sets owner = 0, stores folded = local count + unprovisioned, then CASes xfree to ORPHAN (dropping WATCH). If the free count is at least cap/8 the page is resolved into its class pool (QUEUED); if completely free it is released. A claimer takes the fullest queued page, exchanges xfree to 0, merges the chain, then sets oheap and owner. Orphans with less than 1/8 free sit on no list until remote frees make them PENDING.",
+   "closest_prior_work": [
+    "Hoard: superblocks at least f empty move from per-processor heaps to the global heap for reuse",
+    "mimalloc v1/v2: segments abandoned at thread exit and reclaimed by other threads (abandoned-segment bitmaps in arenas, reclaim-on-free option)",
+    "mimalloc v3: per-size-class abandoned-page bitmaps in arenas (pages_abandoned[bin]); pages re-abandoned to 'mapped' once 1/8 free; reclaim on free",
+    "rpmalloc: releases the thread heap for reuse by other threads"
+   ],
+   "verdict": "known",
+   "reasoning": "mimalloc v3 implements the same structure: exited threads' pages become per-size-class reclaimable pages once enough of each page is free (the same 1/8 rule), and other threads claim them. Hoard published the principle in 2000. The detach-then-publish ordering (owner cleared before ORPHAN) is a correctness detail of this implementation. The emulated-TLS fix (commit 7525796) is portability engineering.",
+   "evidence_in_project": "docs/IMPLEMENTATION_NOTES.md \u00a75.3 and \u00a78 deviation 5; src/heap.c page_detach() and pool_claim(); commit 7525796 (2026-10-19T12:44:20Z, detach heaps at thread exit even when emulated TLS is gone)."
+  },
+  {
+   "name": "Hugeblock page heap: per-hugeblock bitmaps, best-fit placement, whole-hugeblock-first release",
+   "description": "2 MiB hugeblocks of 32 slices, each with a bitmap. Allocations of 32 slices or fewer are best-fit (the hugeblock whose longest fitting free run is shortest). Larger runs take whole contiguous hugeblocks and prefer the candidate with the most resident slices. Release takes wholly free hugeblocks first.",
+   "closest_prior_work": [
+    "TCMalloc Temeraire (Hunter et al., OSDI 2021): per-hugepage bitmap of used pages with best-fit search inside a hugepage; hugepages ranked by longest free range, then allocation count (explicitly 'differs from best fit'); subrelease of partially used hugepages is 'the last resort'",
+    "TCMalloc huge_page_filler.h: release from the emptiest hugepage; break up a hugepage only if no partially released one exists; prefer used and donated pages over previously released ones",
+    "LLFree (Wrenger et al., USENIX ATC 2023): bitmap-based, huge-frame-aware page-frame allocator",
+    "SuperMalloc (ISMM 2015): 2 MiB chunks holding same-size objects",
+    "jemalloc: extent reuse that prefers dirty extents (general practice; not re-verified in this session)"
+   ],
+   "verdict": "known",
+   "reasoning": "Temeraire published every element: per-hugepage bitmaps, best-fit within a hugepage, whole-hugepage release before subrelease, and a preference for backed memory. sohamalloc chooses among hugeblocks with plain best-fit, which Temeraire evaluated and argued against in favour of its longest-free-range and allocation-count policy. So on this point sohamalloc is, if anything, a simpler, older policy. v0.1 also requests transparent hugepages only in the throughput profile when THP is set to madvise, and hugepage coverage was never measured. 'Hugepage-aware' therefore means placement and release granularity, not demonstrated TLB benefit. The closest system, Google TCMalloc with Temeraire, was not in the benchmark: 'tcmalloc' in bench/ is gperftools tcmalloc-minimal 2.15.",
+   "evidence_in_project": "docs/IMPLEMENTATION_NOTES.md \u00a72 and \u00a75.5; src/pageheap.c header comment (lines ~12-21), best_fit() (line ~143), large-run selection (line ~385); bench/README.md 'Competitor versions'."
+  },
+  {
+   "name": "Batched process_madvise release outside all locks",
+   "description": "Each release pass marks its ranges 'releasing' under the page-heap lock (neither allocatable nor free), unlocks, and calls process_madvise(PIDFD_SELF, ...) with up to 64 merged ranges. process_madvise is probed once; if unavailable, the pass falls back to a madvise loop. It then relocks and marks the ranges zero (DONTNEED) or lazy (MADV_FREE). No release syscall runs under any lock.",
+   "closest_prior_work": [
+    "jemalloc PR #2794 'Implement process_madvise support.' (merged 2025-03-07): opt.process_madvise_max_batch for batched purging, falling back to madvise",
+    "Linux mm/madvise TLB-flush batching for process_madvise (SeongJae Park, RFC March 2025), which makes such batching worthwhile",
+    "MongoDB SERVER-31417: gperftools tcmalloc held an internal lock during large madvise releases, stalling threads (the problem that releasing outside the lock avoids)"
+   ],
+   "verdict": "known",
+   "reasoning": "Batched process_madvise purging is published, merged jemalloc behaviour (opt.process_madvise_max_batch). Taking ranges out under the lock, dropping it for the syscall and re-inserting afterwards is a standard in-transit-state pattern; its absence in gperftools tcmalloc was a reported production problem. I did not verify whether jemalloc or TCMalloc already purge with all locks dropped, so that detail stays open. The project measured no release latency, syscall counts or lock hold times, so it does not quantify the benefit. The jemalloc baseline (5.3.0) predates process_madvise support, so the comparison does not include it.",
+   "evidence_in_project": "docs/IMPLEMENTATION_NOTES.md \u00a75.5 'Each release pass'; src/os_posix.c; process_madvise first appears in commit 1560b2e (2026-10-19T01:23:26Z); plan \u00a75.8.2 credits jemalloc batched purging (docs/research/00-v1-critique.md fault 7)."
+  },
+  {
+   "name": "Excess release with a recent-peak swing allowance",
+   "description": "The page heap releases free resident memory above dirty_limit = max(dirty_min, used/dirty_div, swing) immediately, wholly free hugeblocks first. swing = min(peak - used, used * peak_num / 4), where peak is the largest 'used' over the current and previous decay epoch. Decay still returns the retained memory once the swing stops.",
+   "closest_prior_work": [
+    "Temeraire HugeCache (OSDI 2021): tracks demand over a 2-second sliding window and returns hugepages whenever the cache would exceed demand_max - demand_min; 'in oscillating usage, this will (incorrectly) free memory once, then (correctly) keep it'",
+    "TCMalloc skip-subrelease (huge_page_filler.h): 'Don't subrelease pages if it would push you under either the latest peak or the sum of short-term demand fluctuation peak and long-term demand trend'",
+    "Maas, Kennelly, Nguyen, Gove, McKinley, Turner, 'Adaptive Hugepage Subrelease for Non-moving Memory Allocators in Warehouse-Scale Computers', ISMM 2021",
+    "Go runtime scavenger: retains the heap goal plus retainExtraPercent (10%) and releases memory above the goal in the background",
+    "jemalloc dirty/muzzy decay (sigmoidal curve; default dirty decay 10 s)"
+   ],
+   "verdict": "known",
+   "reasoning": "Keeping the recent demand swing and promptly releasing the rest, including at the moment memory is returned, is the published Temeraire HugeCache policy and TCMalloc's skip-subrelease. sohamalloc's formula has different parameters: a proportional floor, a swing cap and a two-epoch window. Go's scavenger publishes the proportional-retention part. The headline result needs caveats. 'Freeing 1 GiB leaves about 50 MB' was measured by an ad-hoc program 2 s after the free with one subsequent malloc. jemalloc 5.3.0's default dirty_decay_ms is 10 s with background threads off, so its 1070 MB partly reflects default timing, not inability to release. 'tcmalloc' is gperftools 2.15, not Temeraire, and mimalloc is 2.1.2, not v3. The mechanism was added within about a minute of that measurement, a quick fix in a measure-and-fix loop rather than a designed experiment.",
+   "evidence_in_project": "docs/IMPLEMENTATION_NOTES.md \u00a75.5 'Dirty limit' and \u00a78 deviation 3; src/pageheap.c ph_dirty_limit() and ph_peak_roll() (lines ~318-346). The scratchpad program stress/rss.c ran at 2026-10-19T06:23:17Z, MB after free: glibc 1017, jemalloc 1070, mimalloc 1035, tcmalloc 628, sohamalloc 1038; glibc fell to 9 MB after malloc_trim. The excess release was added by an edit at 2026-10-19T06:24:16Z. A rerun at 2026-10-19T06:24:29Z gave sohamalloc 50 MB after free, and 41 MB in a second run. Committed in e70903f (2026-10-19T06:26:51Z). The swing allowance was started around 2026-10-19T13:07:56Z ('adding a recent peak allowance') and committed in 273bcb9 (2026-10-19T13:30:07Z). bench/out/report-20261019-134738.md, malloc-large: 1.660 s (1.38x of the best, tcmalloc 1.200; glibc 1.390) and peak RSS 420.0 MiB (1.01x of the best, jemalloc 416.7)."
+  },
+  {
+   "name": "Decay profiles (balanced, memory, throughput)",
+   "description": "Three preset bundles. balanced: decay 1 s, dirty limit max(32 MiB, used/8), DONTNEED. memory: 100 ms, max(8 MiB, used/32), no spares. throughput: 10 s, max(256 MiB, used/2), MADV_FREE, plus MADV_HUGEPAGE when THP is set to madvise. Selected with SOHAMALLOC_PROFILE.",
+   "closest_prior_work": [
+    "jemalloc opt.dirty_decay_ms / opt.muzzy_decay_ms (time-based decay, sigmoidal curve)",
+    "mimalloc MIMALLOC_PURGE_DELAY (1000 ms default in v3)",
+    "TCMalloc background release rate and memory limits",
+    "Go scavenger and GOMEMLIMIT (cited in docs/research/00-v1-critique.md)"
+   ],
+   "verdict": "known",
+   "reasoning": "Time-based purge delays and DONTNEED-versus-FREE choices are standard, configurable features of jemalloc, mimalloc, TCMalloc and Go. Bundling them into named presets is a usability choice, not a research contribution. No experiment in bench/out compares the profiles.",
+   "evidence_in_project": "docs/IMPLEMENTATION_NOTES.md \u00a75.5 'Profiles'; README.md 'Configure (environment)'."
+  },
+  {
+   "name": "'Explain my memory' report",
+   "description": "soham_stats_print(fd) or SOHAMALLOC_STATS=1 prints an allocation-free report, written with raw write(), that breaks estimated resident memory into: in use by the application, cached in thread heaps, cached in shared pools, page-heap free, metadata, large mappings, released to the OS, committed, plus the profile, security tier and release method.",
+   "closest_prior_work": [
+    "TCMalloc stats summary: 'Bytes in use by application', 'Bytes in page heap freelist', 'Bytes in central cache freelist', 'Bytes in per-CPU cache freelist', 'Bytes in malloc metadata', 'Bytes released to OS', 'Actual memory used'",
+    "jemalloc malloc_stats_print / mallctl statistics",
+    "mimalloc mi_stats_print"
+   ],
+   "verdict": "known",
+   "reasoning": "An attribution of the allocator's memory into application, cache tiers, metadata and released memory is exactly TCMalloc's documented stats summary. jemalloc and mimalloc have comparable reports. The plan claimed narrow novelty (plan \u00a74.3 item 4: a kernel view from /proc/self/smaps_rollup with an explicit 'not attributable' residual, so 'no sum is invented'). The v0.1 report as built prints only allocator-side estimates ('resident (est.)'), and I found no smaps_rollup read in src/api.c. The novel part of the plan is therefore not implemented.",
+   "evidence_in_project": "src/api.c soham_get_stats() and soham_stats_print() (lines ~750-803); plan \u00a74.3 item 4 and \u00a75.13; README.md 'Explain my memory'."
+  },
+  {
+   "name": "C++ new/delete written in C, with nothrow delegation to the C++ runtime",
+   "description": "All global operator new/delete forms are C functions under their Itanium-mangled names, so the shared library depends only on libc. Throwing forms call the new_handler through a weak std::get_new_handler and throw through a weak std::__throw_bad_alloc. When allocation fails and a handler is installed, the nothrow forms delegate to the runtime's own nothrow operator, found once with dlsym(RTLD_NEXT). That operator (libstdc++ new_opnt.cc: try { return ::operator new(sz); } catch (...) { return nullptr; }) calls back into sohamalloc's operator new.",
+   "closest_prior_work": [
+    "mimalloc alloc-override.c: defines the mangled C++ operator names in C (_Znwm, _ZnwmRKSt9nothrow_t, _ZdlPv, ...)",
+    "mimalloc alloc.c (plain C build): weak _ZSt15get_new_handlerv; with no handler it calls abort() ('cannot throw in plain C, use abort'); a throwing handler is not caught in the nothrow path",
+    "libstdc++ new_opnt.cc: the nothrow operator new wraps the replaceable ::operator new in try/catch (LWG issue 206)"
+   ],
+   "verdict": "incremental",
+   "reasoning": "Defining C++ operators in C under mangled names is published practice (mimalloc). sohamalloc refines it so that, from C, the throwing forms throw bad_alloc (mimalloc's C path aborts) and the nothrow forms return null when the handler throws (mimalloc's C path lets the exception escape). It does this by reusing libstdc++'s own nothrow operator. This is a neat, verifiable correctness technique worth a paragraph in an implementation section; it is not a research contribution. It depends on libstdc++ behaviour (LWG 206 resolution) and on RTLD_NEXT lookup, and its behaviour with libc++ and static linking should be documented.",
+   "evidence_in_project": "src/api.c lines ~1028-1080 (weak _ZSt15get_new_handlerv and _ZSt17__throw_bad_allocv, dlsym(RTLD_NEXT)); docs/IMPLEMENTATION_NOTES.md \u00a78 deviation 7; commit 273bcb9 (2026-10-19T13:30:07Z); session summary at 2026-10-19T13:52:50Z (the new_handler bug fixed; suites pass on native, debug, aarch64, armhf, Windows and the preload test)."
+  },
+  {
+   "name": "64-byte alignment of hot entry points against code-layout bias",
+   "description": "soham_malloc and soham_free are 64-byte aligned, after the project observed that glibc-simple ran in 2.6-2.9 s when they were aligned and 4.1 s when not, with identical code. The difference depended only on what the linker placed before them.",
+   "closest_prior_work": [
+    "Mytkowicz, Diwan, Hauswirth, Sweeney, 'Producing wrong data without doing anything obviously wrong!', ASPLOS 2009: seemingly innocuous setup changes cause significant, commonplace measurement bias",
+    "Curtsinger & Berger, STABILIZER, ASPLOS 2013 (cited in the plan as [stabilizer]): layout randomization for sound performance evaluation"
+   ],
+   "verdict": "known",
+   "reasoning": "This is an instance of the published layout-bias phenomenon, and function alignment is an ordinary mitigation. For a paper, the observation matters for methods, not as a contribution. Aligning sohamalloc's own entry points does not remove layout bias from the comparison, because the other allocators and the benchmark binaries keep their own layouts. A sound evaluation needs layout randomization (for example STABILIZER-style) or several link orders and environment sizes, and more than 3 repetitions on a dedicated machine.",
+   "evidence_in_project": "docs/IMPLEMENTATION_NOTES.md \u00a79 (last bullet); commit 13bcf17 (2026-10-19T13:54:19Z, 'aligned hot entries'); session summary at 2026-10-19T13:52:50Z ('A glibc-simple regression turned out to be code placement'); plan \u00a74.1 L16 cites [mytkowicz]."
+  },
+  {
+   "name": "Secure tier S1 (SOHAMALLOC_SECURE=1)",
+   "description": "Adds shuffled block order, exact block-boundary checks on every free, abort on foreign pointers, and zeroing of small blocks on free, all on the same page format as the default tier S0.",
+   "closest_prior_work": [
+    "hardened_malloc: slab allocations zeroed on free, write-after-free detection by verifying the zero fill, randomized slot selection",
+    "mimalloc secure mode: guard pages, encoded free lists, randomized allocation, about 10% cost",
+    "isoalloc: canaries, double-free checks on every free, abort on unowned pointers, randomized free lists",
+    "DieHarder (Novark & Berger, CCS 2010); FreeGuard (Silvestro et al., CCS 2017); Guarder (Silvestro et al., USENIX Security 2018); SlimGuard (Liu et al., Middleware 2019); StarMalloc (Reitz et al., OOPSLA 2024)",
+    "Scudo: checksummed chunk headers"
+   ],
+   "verdict": "known",
+   "reasoning": "Every S1 feature appears in at least one published hardened allocator, and the secure-allocator literature (DieHarder, FreeGuard, Guarder, SlimGuard; surveyed in 'SoK: Secure Memory Allocation') covers tunable combinations of them. The project measured neither S1's cost nor its detection rate: bench/README.md says 'No security benchmark', and the results CSV has no secure-mode runs.",
+   "evidence_in_project": "README.md 'Configure (environment)'; plan \u00a75.12; bench/README.md 'Limitations'; bench/out/results-20261019-134738.csv (no secure runs)."
+  },
+  {
+   "name": "Membarrier-based non-blocking lease for idle threads' caches (planned, not implemented)",
+   "description": "The plan's main novelty claim (plan \u00a74.3 item 1): reclaim the caches of idle live threads with an asymmetric Dekker handshake over membarrier(PRIVATE_EXPEDITED), without rseq and without blocking the owner.",
+   "closest_prior_work": [
+    "liburcu: user-space RCU using sys_membarrier for asymmetric fences (cited by the plan as [liburcu][urcu])",
+    "Asymmetric Dekker synchronization (Dice, Moir, Scherer) and folly's asymmetric thread fence: cited by the plan's red team, marked UNVERIFIED in the plan",
+    "TCMalloc per-CPU caches with rseq fences (Mathieu Desnoyers' 2020 LKML critique of TCMalloc's fence)",
+    "PartitionAlloc: documented inability to purge sleeping threads' caches (plan \u00a74.1 L8)"
+   ],
+   "verdict": "incremental",
+   "reasoning": "This is not part of the system as built: IMPLEMENTATION_NOTES \u00a79 says 'Idle threads keep memory... The plan's idle-slot lease (membarrier) is P4'. It cannot be claimed in a paper about v0.1. The plan itself concedes that the synchronisation pattern is prior art (liburcu) and limits the claim to applying it to allocator-cache reclaim, which the project 'has not found in production allocators'. That negative search result was not re-verified here. If implemented and evaluated, it would at best be a novel application of a known pattern.",
+   "evidence_in_project": "docs/SOHAMALLOC_PLAN.md \u00a71.1 item 2 and \u00a74.3 item 1; docs/IMPLEMENTATION_NOTES.md \u00a79 first bullet."
+  },
+  {
+   "name": "Overall system: security-by-default, signal safety and prompt memory return in one competitive general-purpose allocator",
+   "description": "sohamalloc v0.1 combines the mechanisms above in one C11 drop-in allocator: out-of-line records, encoded and checked links, foreign-pointer detection on every free, async-signal-safe malloc/free, owner-retained pages with threshold notification, a hugeblock page heap with immediate excess release, and an allocation-free memory report. It runs on Linux x86-64 and arm64, armhf, musl and Windows (prefixed API).",
+   "closest_prior_work": [
+    "mimalloc v3 (free-list sharding, abandoned-page reclaim, separated metadata, secure mode)",
+    "Google TCMalloc with Temeraire and skip-subrelease (hugepage-aware placement and demand-based release)",
+    "snmalloc (pagemap, message passing, free-list protection)",
+    "hardened_malloc, isoalloc, Scudo, PartitionAlloc (hardening)",
+    "Michael 2004 / LRMalloc (lock-free, signal-safe allocation)"
+   ],
+   "verdict": "novel-combination",
+   "reasoning": "Taken one by one, the mechanisms are known or incremental. I found no published allocator that combines default-on hardening (encoded links, a foreign-pointer check on every free, out-of-line records), a documented async-signal-safety guarantee, and immediate demand-aware memory return in one competitive general-purpose allocator. The contribution would therefore be an integration or experience paper, and its strength depends entirely on evaluation quality, which is currently weak. (1) In report-20261019-134738.md sohamalloc's geomean time is 1.124 against mimalloc's 1.063, and peak RSS 1.162 against 1.227; the combined score ties at 1.142. That run used 24 benchmarks, 5 allocators and 3 repetitions on one shared 4-vCPU VM, with per-benchmark spread up to 117%. (2) The baselines are distro builds: jemalloc 5.3.0, mimalloc 2.1.2 (v2 line, secure off), gperftools tcmalloc-minimal 2.15 and glibc 2.39. The closest prior systems for several mechanisms, Google TCMalloc/Temeraire and mimalloc v3, were not measured. (3) The benchmarked binary is identified as git 4661e1a 'src/include modified in working tree'; 4661e1a has the same subject and timestamp as 273bcb9 in the rewritten branch history, so the exact source state must be pinned (the snapshot sha256 is in run-20261019-134738/env.txt). (4) No security, signal-injection or hugepage-coverage experiments exist, and the per-mechanism costs (encoding, the granule-map check, the busy byte) were not ablated. (5) The research, design, review, test and benchmark work used AI-assisted tooling: multi-agent research and design workflows from 2026-10-18T18:08:03Z, and build, test and review workflows from 2026-10-19T01:02:02Z. A methods section should state this factually.",
+   "evidence_in_project": "bench/out/report-20261019-134738.md (geomeans, spread, git id); bench/README.md 'Limitations' and 'Competitor versions'; git log on branch sohamalloc-dev: first commit ba06bb7 2026-10-18T18:00:22Z, last 13bcf17 2026-10-19T13:54:19Z; workflow launches in transcript at 2026-10-18T18:08:03Z, 2026-10-19T01:02:02Z, 2026-10-19T06:02:20Z; README.md 'Verified' (TSan/ASan/UBSan, qemu aarch64/armhf, musl, mingw+wine)."
+  }
+ ],
+ "references": [
+  {
+   "citation": "E. D. Berger, K. S. McKinley, R. D. Blumofe, P. R. Wilson. Hoard: A Scalable Memory Allocator for Multithreaded Applications. ASPLOS 2000.",
+   "url": "https://www.cs.utexas.edu/~mckinley/papers/asplos-2000.pdf",
+   "relevance": "Emptiness threshold f/K (hysteresis), per-processor plus global heap, superblocks at least f empty moved to the global heap. Prior work for the unfull threshold, detach/claim pools and false-sharing avoidance."
+  },
+  {
+   "citation": "M. M. Michael. Scalable Lock-Free Dynamic Memory Allocation. PLDI 2004, pp. 35-46. DOI 10.1145/996841.996848.",
+   "url": "https://www.cs.tufts.edu/~nr/cs257/archive/neal-glew/mcrt/Non-blocking%20data%20structures/p35-michael.pdf",
+   "relevance": "Lock-free general-purpose malloc/free with keyword 'async-signal-safe', usable in interrupt handlers. Closest published prior work for the signal-safety property."
+  },
+  {
+   "citation": "R. Leite, R. Rocha. LRMalloc: A Modern and Competitive Lock-Free Dynamic Memory Allocator. 2018.",
+   "url": "https://consensus.app/papers/details/091e0f2b671d58eb986aa2dbcd2fe5e0/?utm_source=claude_desktop",
+   "relevance": "Modern lock-free allocator (deadlock immunity, kill tolerance). Prior work for allocation that is safe under interruption."
+  },
+  {
+   "citation": "J. Evans. A Scalable Concurrent malloc(3) Implementation for FreeBSD. BSDCan 2006.",
+   "url": "https://people.freebsd.org/~jasone/jemalloc/bsdcan2006/jemalloc.pdf",
+   "relevance": "Original jemalloc design (arenas, thread scalability)."
+  },
+  {
+   "citation": "jemalloc manual (jemalloc.xml.in, dev branch): opt.dirty_decay_ms (default 10 s, sigmoidal decay), opt.background_thread (off by default), opt.process_madvise_max_batch.",
+   "url": "https://raw.githubusercontent.com/jemalloc/jemalloc/dev/doc/jemalloc.xml.in",
+   "relevance": "Decay-based purging and batched process_madvise. Explains part of jemalloc's 1070 MB retention 2 s after free in the project's measurement."
+  },
+  {
+   "citation": "jemalloc pull request #2794, 'Implement process_madvise support.' (interwq), opened 2025-02-05, merged 2025-03-07.",
+   "url": "https://github.com/jemalloc/jemalloc/pull/2794",
+   "relevance": "Published prior art for batched release through process_madvise with fallback to madvise."
+  },
+  {
+   "citation": "A. H. Hunter, C. Kennelly, P. Turner, D. Gove, T. Moseley, P. Ranganathan. Beyond malloc efficiency to fleet efficiency: a hugepage-aware memory allocator. OSDI 2021.",
+   "url": "https://www.usenix.org/system/files/osdi21-hunter.pdf",
+   "relevance": "Temeraire: per-hugepage bitmaps with best-fit inside a hugepage, longest-free-range placement, subrelease as last resort, HugeCache sized by a 2 s demand window (demand_max - demand_min). Closest prior work for the page heap and the swing allowance."
+  },
+  {
+   "citation": "TCMalloc source, tcmalloc/huge_page_filler.h (skip-subrelease, release from the emptiest hugepage, longest-free-range/nallocs placement).",
+   "url": "https://raw.githubusercontent.com/google/tcmalloc/master/tcmalloc/huge_page_filler.h",
+   "relevance": "'Don't subrelease pages if it would push you under either the latest peak or ... demand fluctuation peak ...'. Direct prior art for retaining the recent peak swing."
+  },
+  {
+   "citation": "M. Maas, C. Kennelly, K. Nguyen, D. Gove, K. S. McKinley, P. Turner. Adaptive Hugepage Subrelease for Non-moving Memory Allocators in Warehouse-Scale Computers. ISMM 2021.",
+   "url": "https://research.google/pubs/adaptive-hugepage-subrelease-for-non-moving-memory-allocators-in-warehouse-scale-computers/",
+   "relevance": "Adaptive, demand-aware release policy and the 'realized fragmentation' metric. Prior work for excess release and swing retention."
+  },
+  {
+   "citation": "A. H. Hunter, C. Kennelly. Temeraire design note (TCMalloc documentation).",
+   "url": "https://google.github.io/tcmalloc/temeraire.html",
+   "relevance": "Filler ordering by fragmentation (longest free range) then allocation count; partial subrelease of mostly-empty hugepages as last resort."
+  },
+  {
+   "citation": "TCMalloc documentation: Understanding Malloc Stats.",
+   "url": "https://google.github.io/tcmalloc/stats.html",
+   "relevance": "Published memory-attribution summary (in use by application, page heap freelist, central/per-CPU caches, metadata, released to OS). Prior art for the 'explain my memory' report."
+  },
+  {
+   "citation": "D. Leijen, B. Zorn, L. de Moura. Mimalloc: Free List Sharding in Action. APLAS 2019 (MSR-TR-2019-18).",
+   "url": "https://www.microsoft.com/en-us/research/publication/mimalloc-free-list-sharding-in-action",
+   "relevance": "Per-page sharded free lists with a separate thread-free list (one-CAS cross-thread free). Basis of sohamalloc's owner-retained page design (IMPLEMENTATION_NOTES deviation 1)."
+  },
+  {
+   "citation": "mimalloc source, src/free.c (dev branch, v2): mi_free_block_delayed_mt with MI_USE_DELAYED_FREE / MI_DELAYED_FREEING and heap->thread_delayed_free.",
+   "url": "https://raw.githubusercontent.com/microsoft/mimalloc/dev/src/free.c",
+   "relevance": "Owner notification on the first remote free to a full page. Closest prior work for WATCH notification."
+  },
+  {
+   "citation": "mimalloc source, src/alloc/free.c (dev3 branch, v3): owned bit in xthread_free, mi_free_try_collect_mt, re-abandon when a page is below 7/8 used.",
+   "url": "https://raw.githubusercontent.com/microsoft/mimalloc/dev3/src/alloc/free.c",
+   "relevance": "Same 1/8-free threshold and responsibility-by-CAS pattern as sohamalloc's ORPHAN/PENDING protocol."
+  },
+  {
+   "citation": "mimalloc source, src/arena/arena.c (dev3): per-bin abandoned-page bitmaps (pages_abandoned[bin]).",
+   "url": "https://raw.githubusercontent.com/microsoft/mimalloc/dev3/src/arena/arena.c",
+   "relevance": "Per-size-class pools of abandoned pages. Prior art for detach/claim into class pools."
+  },
+  {
+   "citation": "mimalloc source, include/mimalloc/internal.h (dev): mi_ptr_encode/mi_ptr_decode with per-page keys and a same-page check.",
+   "url": "https://raw.githubusercontent.com/microsoft/mimalloc/dev/include/mimalloc/internal.h",
+   "relevance": "Per-page-keyed free-list encoding with a bounds check. Component of sohamalloc's link encoding."
+  },
+  {
+   "citation": "mimalloc source, src/page.c (dev): bounded thread-free collect reporting 'corrupted thread-free list (possibly due to a cross-thread double free)'.",
+   "url": "https://raw.githubusercontent.com/microsoft/mimalloc/dev/src/page.c",
+   "relevance": "Prior art for count-bounded chain walks and cross-thread double-free detection."
+  },
+  {
+   "citation": "mimalloc source, src/alloc-override.c and src/alloc.c (dev): C++ operators defined in C under mangled names; weak _ZSt15get_new_handlerv; abort instead of throw in plain C.",
+   "url": "https://raw.githubusercontent.com/microsoft/mimalloc/dev/src/alloc-override.c",
+   "relevance": "Direct prior art for C++ operators written in C. sohamalloc's refinement is throwing and nothrow delegation."
+  },
+  {
+   "citation": "mimalloc README (main): v3.3.0 (2026-04-15) 'by default put page meta info separate from allocated objects'; secure mode about 10% cost; MIMALLOC_PURGE_DELAY.",
+   "url": "https://raw.githubusercontent.com/microsoft/mimalloc/main/readme.md",
+   "relevance": "Separated metadata, secure mode and purge-delay prior art."
+  },
+  {
+   "citation": "libstdc++ libsupc++/new_opnt.cc: nothrow operator new implemented as try { return ::operator new(sz); } catch (...) { return nullptr; } (LWG 206).",
+   "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/master/libstdc%2B%2B-v3/libsupc%2B%2B/new_opnt.cc",
+   "relevance": "The runtime behaviour that sohamalloc's nothrow delegation relies on."
+  },
+  {
+   "citation": "P. Lietar, T. Butler, S. Clebsch, S. Drossopoulou, J. Franco, M. J. Parkinson, A. Shamis, C. M. Wintersteiger, D. Chisnall. snmalloc: A Message Passing Allocator. ISMM 2019.",
+   "url": "https://www.microsoft.com/en-us/research/uploads/prod/2020/04/snmalloc.pdf",
+   "relevance": "Flat one-byte-per-chunk pagemap over the 48-bit address space with an 'Unknown: not managed by snmalloc' zero state (prior art for the granule map), and batched message-passing remote frees."
+  },
+  {
+   "citation": "snmalloc documentation: Protecting free lists from user corruption (FreelistProtection.md); security README (hardening regressions under 5%).",
+   "url": "https://raw.githubusercontent.com/microsoft/snmalloc/main/docs/security/FreelistProtection.md",
+   "relevance": "XOR-encoded forward pointers plus signed back-pointers. A stronger published free-list protection to compare against."
+  },
+  {
+   "citation": "Check Point Research (E. Itkin). Safe-Linking: Eliminating a 20 year-old malloc() exploit primitive. 2020.",
+   "url": "https://research.checkpoint.com/2020/safe-linking-eliminating-a-20-year-old-malloc-exploit-primitive/",
+   "relevance": "PROTECT(P) = (L >> PAGE_SHIFT) XOR P with alignment check; glibc 2.32. Source of the address term in sohamalloc's encoding."
+  },
+  {
+   "citation": "Chromium PartitionAlloc, encoded_next_freelist.h (Transform = byte reversal on little-endian).",
+   "url": "https://raw.githubusercontent.com/chromium/chromium/main/base/allocator/partition_allocator/src/partition_alloc/encoded_next_freelist.h",
+   "relevance": "bswap encoding so that partial overwrites and use-after-free dereferences produce non-canonical pointers. Source of sohamalloc's outer bswap."
+  },
+  {
+   "citation": "Chromium PartitionAlloc design document (PartitionAlloc.md).",
+   "url": "https://chromium.googlesource.com/chromium/src/+/HEAD/base/allocator/partition_allocator/PartitionAlloc.md",
+   "relevance": "Guard-page-bracketed metadata in 2 MiB super pages; 'Linear overflows/underflows cannot corrupt the allocation metadata'; inline encoded freelists with a shadow copy."
+  },
+  {
+   "citation": "GrapheneOS hardened_malloc README.",
+   "url": "https://github.com/GrapheneOS/hardened_malloc/blob/main/README.md",
+   "relevance": "Fully out-of-line mutable state, bitmaps instead of inline lists, deterministic invalid/double-free detection, zero-on-free with write-after-free check, randomized slots."
+  },
+  {
+   "citation": "isoalloc README (struct/isoalloc).",
+   "url": "https://github.com/struct/isoalloc",
+   "relevance": "Separately allocated bitmaps with PROT_NONE guards, abort on unowned pointers, double-free checks on every free, canaries."
+  },
+  {
+   "citation": "LLVM Scudo Hardened Allocator documentation (release 9.0).",
+   "url": "https://prereleases.llvm.org/9.0.0/rc2/docs/ScudoHardenedAllocator.html",
+   "relevance": "Contrast: inline checksummed chunk headers instead of out-of-line metadata."
+  },
+  {
+   "citation": "G. Novark, E. D. Berger. DieHarder: securing the heap. CCS 2010.",
+   "url": "https://consensus.app/papers/details/fb90f7e29fd9577e973b78f643f73234/?utm_source=claude_desktop",
+   "relevance": "Formal treatment of allocator design and security; randomized, out-of-band-metadata secure allocator."
+  },
+  {
+   "citation": "S. Silvestro et al. FreeGuard: A Faster Secure Heap Allocator. CCS 2017.",
+   "url": "https://consensus.app/papers/details/65f4c3eaf2215d3cab35f7b062158308/?utm_source=claude_desktop",
+   "relevance": "Secure allocator with under 2% average overhead. Prior work for low-cost default hardening."
+  },
+  {
+   "citation": "S. Silvestro et al. Guarder: A Tunable Secure Allocator. USENIX Security 2018.",
+   "url": "https://consensus.app/papers/details/61c3381a2a0854ce93c7085071be2944/?utm_source=claude_desktop",
+   "relevance": "Tunable security levels. Prior work for sohamalloc's S0/S1 tiers."
+  },
+  {
+   "citation": "B. Liu et al. SlimGuard: A Secure and Memory-Efficient Heap Allocator. Middleware 2019.",
+   "url": "https://consensus.app/papers/details/fef8d2efec635fbcbeab313be2d0ce01/?utm_source=claude_desktop",
+   "relevance": "Memory-efficient secure allocation: on-demand metadata, randomization."
+  },
+  {
+   "citation": "B. Novkovic et al. SoK: Secure Memory Allocation. 2021.",
+   "url": "https://consensus.app/papers/details/a348a9b9e54a59ada7d2c10ff615fd10/?utm_source=claude_desktop",
+   "relevance": "Classification of secure allocation techniques. Context for judging S0/S1 novelty."
+  },
+  {
+   "citation": "A. Reitz et al. StarMalloc: Verifying a Modern, Hardened Memory Allocator. OOPSLA 2024 (PACMPL).",
+   "url": "https://consensus.app/papers/details/2d8b1c1755dc5813b1eec498f18b6f59/?utm_source=claude_desktop",
+   "relevance": "Verified hardened drop-in allocator. A bar for correctness claims about concurrency and security protocols."
+  },
+  {
+   "citation": "S. Bauroth. SJMalloc: the security-conscious, fast, thread-safe and memory-efficient heap allocator. arXiv 2024.",
+   "url": "https://consensus.app/papers/details/6648dfb424995a16aa6d66bb69bd6f1c/?utm_source=claude_desktop",
+   "relevance": "General-purpose allocator with out-of-band metadata as a performance and security feature."
+  },
+  {
+   "citation": "B. Powers, D. Tench, E. D. Berger, A. McGregor. Mesh: Compacting Memory Management for C/C++ Applications. PLDI 2019.",
+   "url": "https://arxiv.org/abs/1902.04738v2",
+   "relevance": "Memory-efficiency prior work (meshing breaks Robson bounds); context for sohamalloc's memory-return claims."
+  },
+  {
+   "citation": "B. C. Kuszmaul. SuperMalloc: A Super Fast Multithreaded malloc() for 64-bit Machines. ISMM 2015.",
+   "url": "https://conf.researchr.org/details/ismm-2015/ismm-2015-papers/1/SuperMalloc-A-Super-Fast-Multithreaded-malloc-for-64-bit-Machines",
+   "relevance": "2 MiB chunks and an array mapping chunk numbers to metadata. Prior art for arithmetic out-of-line metadata lookup in a large VA layout."
+  },
+  {
+   "citation": "L. Wrenger, F. Rommel, A. Halbuer, C. Dietrich, D. Lohmann. LLFree: Scalable and Optionally-Persistent Page-Frame Allocation. USENIX ATC 2023.",
+   "url": "https://www.usenix.org/conference/atc23/presentation/wrenger",
+   "relevance": "Lock-free, bitmap-based, huge-frame-aware page allocation. Prior art for per-hugeblock bitmaps."
+  },
+  {
+   "citation": "M. Jansson. rpmalloc README.",
+   "url": "https://github.com/mjansson/rpmalloc",
+   "relevance": "64 KiB small pages; cross-thread frees deferred through a separate atomic free list per page; thread heaps released for reuse."
+  },
+  {
+   "citation": "M. V. Yason. Windows 10 Segment Heap Internals. Black Hat USA 2016 (white paper).",
+   "url": "https://www.blackhat.com/docs/us-16/materials/us-16-Yason-Windows-10-Segment-Heap-Internals-wp.pdf",
+   "relevance": "Production segment-based heap with out-of-band metadata and security mechanisms; related work for the Windows port. Not analysed in detail here."
+  },
+  {
+   "citation": "A. Starovoitov. slab: Re-entrant kmalloc_nolock() (v5 patch series). Sept 2025.",
+   "url": "https://lwn.net/Articles/1037339/",
+   "relevance": "Kernel allocation from any context including NMI. Mechanism-level prior art for trylock-only reentrant allocation."
+  },
+  {
+   "citation": "V. Babka. [PATCH v3 14/21] slab: simplify kmalloc_nolock(). LKML, 2026-01-16.",
+   "url": "https://lkml.iu.edu/hypermail/linux/kernel/2601.2/06507.html",
+   "relevance": "'trylock failures can still happen so retry with the larger bucket'. A fallback-on-trylock-failure design analogous to sohamalloc's trymode."
+  },
+  {
+   "citation": "Linux kernel/bpf/memalloc.c (BPF-specific any-context memory allocator; per-CPU 'active' counter; free_llist_extra).",
+   "url": "https://git.zx2c4.com/linux-rng/plain/kernel/bpf/memalloc.c",
+   "relevance": "Reentrancy counter plus deferred free list when busy. The same pattern as sohamalloc's busy byte plus deferred list, published in the kernel."
+  },
+  {
+   "citation": "libatomic_ops README_malloc (AO_malloc).",
+   "url": "https://mirror.ircam.fr/pub/CTAN/graphics/asymptote/libatomic_ops/README_malloc.txt",
+   "relevance": "Almost-lock-free allocator 'intended as a safe way to allocate memory from a signal handler'."
+  },
+  {
+   "citation": "folly ReentrantAllocator.h.",
+   "url": "https://raw.githubusercontent.com/facebook/folly/main/folly/memory/ReentrantAllocator.h",
+   "relevance": "Special-purpose multi-thread-safe and async-signal-safe allocator (mmap plus shared arena list)."
+  },
+  {
+   "citation": "Go runtime mgcscavenge.go (scavenger goals: retainExtraPercent = 10, memory-limit goal).",
+   "url": "https://raw.githubusercontent.com/golang/go/master/src/runtime/mgcscavenge.go",
+   "relevance": "Proportional retention above live demand with background release. Prior art for the proportional part of the dirty limit."
+  },
+  {
+   "citation": "MongoDB SERVER-31417 (tcmalloc holds an internal lock while releasing memory with madvise).",
+   "url": "https://jira.mongodb.org/browse/SERVER-31417",
+   "relevance": "Documented production problem that releasing outside allocator locks addresses."
+  },
+  {
+   "citation": "SeongJae Park et al. [RFC PATCH 00/16] mm/madvise: batch tlb flushes for MADV_DONTNEED and MADV_FREE. LKML, March 2025 (thread includes the jemalloc process_madvise draft).",
+   "url": "https://lkml.rescloud.iu.edu/2503.0/07410.html",
+   "relevance": "Kernel-side rationale for vectored process_madvise release."
+  },
+  {
+   "citation": "T. Mytkowicz, A. Diwan, M. Hauswirth, P. F. Sweeney. Producing wrong data without doing anything obviously wrong! ASPLOS 2009, pp. 265-276. DOI 10.1145/1508244.1508275.",
+   "url": "https://sape.inf.usi.ch/publications/asplos09",
+   "relevance": "Measurement bias from innocuous setup changes. Explains the observed 2.6-2.9 s vs 4.1 s glibc-simple layout effect and shows the need for setup randomization in any evaluation."
+  },
+  {
+   "citation": "C. Curtsinger, E. D. Berger. STABILIZER: Statistically Sound Performance Evaluation. ASPLOS 2013 (cited in the project plan as [stabilizer]; not re-fetched in this session).",
+   "url": "https://people.cs.umass.edu/~emery/pubs/stabilizer-asplos13.pdf",
+   "relevance": "Layout randomization methodology recommended for a publishable evaluation."
+  }
+ ]
+}
