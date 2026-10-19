@@ -494,10 +494,15 @@ SOHAM_API void soham_free(void *p) {
              (a & g_geo.amask) == 0 && t->heap != NULL &&
              !atomic_load_explicit(&t->busy, memory_order_relaxed))) {
     rec_t *r = rec_of(a);
-    rec_t *rh = rec_head(r);
     atomic_store_explicit(&t->busy, 1, memory_order_relaxed);
     signal_fence();
-    if (likely(atomic_load_explicit(&rh->r.owner, memory_order_relaxed) == t->tag)) {
+    /* Load head_delta and owner in parallel: single-slice pages (the common
+     * case) need no second dependent load. */
+    uint32_t hd = r->r.head_delta;
+    uint32_t own = atomic_load_explicit(&r->r.owner, memory_order_relaxed);
+    rec_t *rh = r;
+    if (unlikely(hd != 0)) { rh = (rec_t *)((char *)r - hd); own = atomic_load_explicit(&rh->r.owner, memory_order_relaxed); }
+    if (likely(own == t->tag)) {
       uintptr_t head = o_head(rh);
       if (unlikely(head == a)) soham_fatal("double free detected", a);
       *(uintptr_t *)a = link_enc(rh->o.key, head, a);
