@@ -108,6 +108,7 @@
 #define SOHAM_LUT_MAX       1024u
 #define SOHAM_NSMALL        44u              /* ids 0-43: one-slice pages */
 #define SOHAM_MAX_CLASS     ((size_t)256 * 1024)
+#define SOHAM_FAST_MAX      ((size_t)128 * 1024)   /* classes 0-59: bins */
 #define SOHAM_CLASS_RUN_A   61u              /* 192 KiB: served as a run */
 #define SOHAM_CLASS_RUN_B   63u              /* 256 KiB: served as a run */
 #define SOHAM_SOLO_MIN      ((size_t)32 * 1024 * 1024)
@@ -130,7 +131,9 @@ SOHAM_INLINE uint64_t fw_make(uintptr_t p, uint32_t c) { return (uint64_t)p | ((
 #define XF_ORPHAN  ((uint64_t)1)   /* detached; on no list; count = total free */
 #define XF_QUEUED  ((uint64_t)2)   /* in a class pool; count = total free */
 #define XF_PENDING ((uint64_t)4)   /* one thread is responsible for resolve() */
-#define XF_FLAGS   ((uint64_t)7)
+#define XF_WATCH   ((uint64_t)8)   /* owned page on its owner's full list: the
+                                      next remote free notifies the owner */
+#define XF_FLAGS   ((uint64_t)15)
 SOHAM_INLINE uintptr_t xf_ptr(uint64_t w) { return (uintptr_t)(w & FW_PTRMASK & ~(uint64_t)15); }
 SOHAM_INLINE uint32_t xf_cnt(uint64_t w) { return (uint32_t)(w >> SOHAM_PTR_BITS); }
 SOHAM_INLINE uint64_t xf_make(uintptr_t p, uint32_t c, uint64_t flags) {
@@ -150,24 +153,41 @@ SOHAM_INLINE uint64_t xf_make(uintptr_t p, uint32_t c, uint64_t flags) {
 /* ---------------------------------------------------------------------- */
 
 typedef struct rec_s rec_t;
+typedef struct heap_s heap_t;
+
+/* lflags: which owner list a page is on (cur is on none). */
+#define LF_AVAIL 1u
+#define LF_FULL  2u
 
 typedef struct {                 /* line O: written by the owning heap */
-  _Atomic uint64_t free;         /* fw: local free list */
+  /* Local free list.  Only the holder of the owning heap reads or writes
+   * these (signal handlers never do: tls.busy routes them elsewhere), so
+   * head and count need not be packed into one word.  Relaxed atomics only
+   * because statistics read them racily; they compile to plain moves. */
+  _Atomic uintptr_t fhead;
+  _Atomic uint32_t fcnt;
   uint32_t prov;                 /* blocks provisioned so far */
-  uint32_t lflags;
+  uint32_t event_at;             /* local count at which a local free calls
+                                    page_local_event: prov, or 1 on the full list */
+  uint32_t psize;                /* copy of r.psize */
   uintptr_t bump;                /* next unprovisioned byte */
+  /* Owner-side copies of line R, so the owner's fast paths touch one line. */
+  uintptr_t key;
+  uintptr_t pbase;
+  rec_t *lnext, *lprev;          /* owner's avail/full list */
 } rec_o_t;
 
 typedef struct {                 /* line R: written only at page init */
   _Atomic uint32_t owner;        /* heap tag, OWNER_* */
-  uint32_t head_delta;           /* records back to the head record (0 = head) */
+  uint32_t head_delta;           /* bytes back to the head record (0 = head) */
   uintptr_t key;                 /* per-page link key */
   uintptr_t pbase;               /* page base address */
   uint32_t psize;                /* page bytes (slice multiple) */
   uint32_t bsize;                /* block bytes (RUN: psize) */
   uint32_t cap;                  /* blocks per page (RUN: 1) */
   uint32_t nslices;              /* slices in the page */
-  uint8_t cls, kind, zero, rpad;
+  uint8_t cls, kind, zero, lflags; /* lflags: LF_*, owner-written on list moves */
+  _Atomic(heap_t *) oheap;       /* owning heap (valid while owner is a tag) */
 } rec_r_t;
 
 typedef struct {                 /* line X: remote frees and pool links */
@@ -177,6 +197,8 @@ typedef struct {                 /* line X: remote frees and pool links */
   rec_t *pnext, *pprev;          /* class-pool list */
   rec_t *pend_next;              /* pending-pages stack */
   _Atomic uint32_t pend_state;   /* 1 while on the pending stack */
+  _Atomic uint32_t nstate;       /* 1 while on an owner's notify stack */
+  rec_t *nnext;                  /* owner notify stack link */
 } rec_x_t;
 
 struct rec_s {
@@ -192,6 +214,13 @@ _Static_assert(sizeof(rec_t) == REC_SIZE, "record must be 192 bytes");
 /* ---------------------------------------------------------------------- */
 
 #define HB_SLICES 32u                 /* slices per hugeblock: always 32 */
+
+/* Slice size S = max(64 KiB, base page).  Every mainstream base page (4, 16
+ * and 64 KiB) gives S = 64 KiB, so the shift is a compile-time constant;
+ * build with -DSOHAM_SLICE_SHIFT=18 for 256 KiB-page systems. */
+#ifndef SOHAM_SLICE_SHIFT
+#define SOHAM_SLICE_SHIFT 16u
+#endif
 #define HB_FULL   0xffffffffu
 
 typedef struct window_s window_t;
@@ -248,9 +277,8 @@ SOHAM_INLINE void soham_lock_reset(soham_lock_t *l) { atomic_store_explicit(&l->
 /* Heaps (slots) and thread state (§5.3)                                   */
 /* ---------------------------------------------------------------------- */
 
-typedef struct { rec_t *cur; rec_t *alt; } bin_t;
+typedef struct { rec_t *cur; rec_t *avail; rec_t *full; uintptr_t pad; } bin_t;
 
-typedef struct heap_s heap_t;
 struct heap_s {
   uint32_t tag;
   uint8_t live;            /* attached to a running thread */
@@ -263,6 +291,9 @@ struct heap_s {
   heap_t *all_next;        /* registry of every heap ever created */
   _Atomic uint8_t *busy_ptr; /* owning thread's tls busy byte (fork child) */
   bin_t bins[SOHAM_NCLASSES];
+  /* Pages on this heap's full lists that received a remote free.  Written
+   * by other threads: kept on its own cache line. */
+  _Atomic(rec_t *) notify __attribute__((aligned(64)));
 };
 
 enum { TLS_NEW = 0, TLS_ATTACHED = 1, TLS_DEAD = 2, TLS_INIT = 3 };
@@ -284,10 +315,12 @@ typedef struct {
 #define GM_WINDOW  1u
 
 typedef struct {
-  /* line 1: everything the free fast path reads */
-  _Atomic size_t gmap_n;       /* 0 before init: every pointer is non-arena */
-  _Atomic uint8_t *gmap;
+  /* line 1: everything the fast paths read */
+  _Atomic uintptr_t gmask;     /* gmap entries - 1; 0 before init */
+  _Atomic(_Atomic uint8_t *) gmap; /* granule map; a 1-byte zero map before init */
+  uintptr_t amask;             /* free fast path alignment mask: 15 (S0), all ones (S1) */
   uintptr_t wmask;             /* W - 1 */
+  uintptr_t wbase;             /* ~(W - 1) */
   size_t rec_off;              /* offset of record[0] in a window */
   unsigned wshift;             /* log2(W) */
   unsigned sshift;             /* log2(S) */
@@ -330,6 +363,15 @@ SOHAM_INLINE uintptr_t link_enc(uintptr_t key, uintptr_t next, uintptr_t a) {
 SOHAM_INLINE uintptr_t link_dec(uintptr_t key, uintptr_t stored, uintptr_t a) {
   return SOHAM_BSWAP(stored) ^ key ^ (a >> 12);
 }
+
+SOHAM_INLINE uintptr_t o_head(const rec_t *r) { return atomic_load_explicit(&r->o.fhead, memory_order_relaxed); }
+SOHAM_INLINE uint32_t o_cnt(const rec_t *r) { return atomic_load_explicit(&r->o.fcnt, memory_order_relaxed); }
+SOHAM_INLINE void o_set(rec_t *r, uintptr_t head, uint32_t cnt) {
+  atomic_store_explicit(&r->o.fhead, head, memory_order_relaxed);
+  atomic_store_explicit(&r->o.fcnt, cnt, memory_order_relaxed);
+}
+
+SOHAM_INLINE rec_t *rec_head(rec_t *r) { return (rec_t *)((char *)r - r->r.head_delta); }
 
 SOHAM_INLINE void signal_fence(void) { atomic_signal_fence(memory_order_seq_cst); }
 

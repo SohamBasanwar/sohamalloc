@@ -14,7 +14,8 @@
 /* Global state                                                            */
 /* ---------------------------------------------------------------------- */
 
-static soham_geo_t g_geo __attribute__((aligned(64)));
+static _Atomic uint8_t g_gmap_zero[1];   /* the granule map before init: all foreign */
+static soham_geo_t g_geo __attribute__((aligned(64))) = { .gmap = g_gmap_zero, .amask = 15 };
 static soham_cfg_t g_cfg;
 static uintptr_t g_secret;
 static size_t g_gmap_n_pending;          /* gmap entries (published at init end) */

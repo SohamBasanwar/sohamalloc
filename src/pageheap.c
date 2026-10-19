@@ -33,7 +33,7 @@ static uint32_t g_class_size[SOHAM_NCLASSES];
 static uint32_t g_class_page[SOHAM_NCLASSES];   /* page bytes */
 static uint32_t g_class_cap[SOHAM_NCLASSES];
 static uint8_t  g_class_kind[SOHAM_NCLASSES];
-static uint8_t  g_lut[SOHAM_LUT_MAX / 16 + 1];
+static uint8_t  g_lut[SOHAM_LUT_MAX / 16 + 1] __attribute__((aligned(64)));
 
 static size_t class_size_formula(unsigned c) {
   if (c < 8) return 16u * (c + 1);
@@ -115,7 +115,7 @@ typedef struct {
   size_t committed_meta;        /* bytes */
 } pageheap_t;
 
-static pageheap_t g_ph;
+static pageheap_t g_ph __attribute__((aligned(64)));
 
 SOHAM_INLINE uintptr_t hb_addr(const hbmeta_t *hb) {
   return hb->win->base + g_geo.data_off + (uintptr_t)hb->idx * g_geo.H;
@@ -236,7 +236,7 @@ static window_t *window_create(void) {
   g_ph.committed_meta += g_geo.meta_size;
   /* Publish: free() of pointers in this window becomes possible only after
    * the creating thread hands out blocks, which happens after this store. */
-  atomic_store_explicit(&g_geo.gmap[base >> g_geo.wshift], GM_WINDOW, memory_order_release);
+  atomic_store_explicit(&atomic_load_explicit(&g_geo.gmap, memory_order_relaxed)[base >> g_geo.wshift], GM_WINDOW, memory_order_release);
   return w;
 }
 
@@ -320,7 +320,7 @@ static uintptr_t ph_alloc_slices(unsigned k, bool *zero) {
   int s = best_fit(hb_free_mask(hb), k);
   SOHAM_ASSERT(s >= 0);
   *zero = hb_take(hb, (unsigned)s, k);
-  uintptr_t a = hb_addr(hb) + ((uintptr_t)s << g_geo.sshift);
+  uintptr_t a = hb_addr(hb) + ((uintptr_t)s << SOHAM_SLICE_SHIFT);
   soham_unlock(&g_ph.lock);
   return a;
 }
@@ -366,7 +366,7 @@ static void ph_free(uintptr_t a, size_t k) {
   window_t *w = (window_t *)(a & ~g_geo.wmask);
   size_t off = a - w->base - g_geo.data_off;
   uint32_t i = (uint32_t)(off / g_geo.H);
-  unsigned s = (unsigned)((off % g_geo.H) >> g_geo.sshift);
+  unsigned s = (unsigned)((off % g_geo.H) >> SOHAM_SLICE_SHIFT);
   while (k > 0) {
     unsigned take = HB_SLICES - s;
     if (take > k) take = (unsigned)k;
@@ -442,14 +442,14 @@ static void ph_purge(int force) {
           unsigned s = (unsigned)__builtin_ctzll(x);
           unsigned len = (unsigned)__builtin_ctzll(~(x >> s));
           x &= ~((((uint64_t)1 << len) - 1) << s);
-          uintptr_t a = hb_addr(hb) + ((uintptr_t)s << g_geo.sshift);
+          uintptr_t a = hb_addr(hb) + ((uintptr_t)s << SOHAM_SLICE_SHIFT);
           if (n > 0 && spans[n - 1].w == w &&
               (uintptr_t)ranges[n - 1].base + ranges[n - 1].len == a) {
             spans[n - 1].nslices += len;
-            ranges[n - 1].len += (size_t)len << g_geo.sshift;
+            ranges[n - 1].len += (size_t)len << SOHAM_SLICE_SHIFT;
           } else if (n < PURGE_MAX_RANGES) {
             spans[n] = (purge_span_t){ w, i, s, len };
-            ranges[n] = (soham_os_range_t){ (void *)a, (size_t)len << g_geo.sshift };
+            ranges[n] = (soham_os_range_t){ (void *)a, (size_t)len << SOHAM_SLICE_SHIFT };
             n++;
           } else {
             /* Out of span slots mid-hugeblock: put the rest back as dirty. */

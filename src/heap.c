@@ -9,7 +9,8 @@
  *    local-free check `owner == my_tag` cannot be invalidated between the
  *    check and the commit.  The only interference is a signal handler on
  *    the same thread, excluded by tls.busy.
- *  - I1: owner == tag  =>  the page is bins[c].cur or bins[c].alt of heap tag.
+ *  - I1: owner == tag  =>  the page is bins[c].cur, or on bins[c].avail or
+ *    bins[c].full of heap tag (lflags says which list).
  *  - I3: every multi-step change is a chain of single-store commits.
  *  - I4: while ORPHAN or QUEUED is set, xfree.count is the page's total free
  *    count (remote chain + folded); "fully free" is count == cap.
@@ -76,14 +77,13 @@ SOHAM_INLINE size_t bss_usable(uintptr_t a) { return ((const size_t *)a)[-1]; }
 /* ---------------------------------------------------------------------- */
 
 SOHAM_INLINE rec_t *rec_of(uintptr_t a) {
-  uintptr_t base = a & ~g_geo.wmask;
-  return (rec_t *)(base + g_geo.rec_off + ((a - base) >> g_geo.sshift) * REC_SIZE);
+  uintptr_t base = a & g_geo.wbase;
+  return (rec_t *)(base + g_geo.rec_off + ((a - base) >> SOHAM_SLICE_SHIFT) * REC_SIZE);
 }
 
 SOHAM_INLINE bool in_window(uintptr_t a) {
-  uintptr_t g = a >> g_geo.wshift;
-  return g < atomic_load_explicit(&g_geo.gmap_n, memory_order_acquire) &&
-         atomic_load_explicit(&g_geo.gmap[g], memory_order_relaxed) == GM_WINDOW;
+  uintptr_t g = (a >> g_geo.wshift) & atomic_load_explicit(&g_geo.gmask, memory_order_acquire);
+  return atomic_load_explicit(&atomic_load_explicit(&g_geo.gmap, memory_order_relaxed)[g], memory_order_relaxed) == GM_WINDOW;
 }
 
 SOHAM_INLINE uint32_t pending_threshold(uint32_t cap) { return cap >= 8 ? cap / 8 : 1; }
@@ -105,7 +105,7 @@ SOHAM_INLINE bool block_ok(const rec_t *rh, uintptr_t a) {
 static void page_init(heap_t *h, rec_t *r, unsigned c, uintptr_t base, uint32_t nslices, uint32_t owner) {
   uint8_t kind = g_class_kind[c];
   for (uint32_t i = 1; i < nslices; i++) {
-    r[i].r.head_delta = i;
+    r[i].r.head_delta = i * REC_SIZE;
     r[i].r.kind = kind;
   }
   r->r.head_delta = 0;
@@ -113,20 +113,26 @@ static void page_init(heap_t *h, rec_t *r, unsigned c, uintptr_t base, uint32_t 
   r->r.cls = (uint8_t)c;
   r->r.bsize = g_class_size[c];
   r->r.cap = g_class_cap[c];
-  r->r.psize = nslices << g_geo.sshift;
+  r->r.psize = nslices << SOHAM_SLICE_SHIFT;
   r->r.nslices = nslices;
   r->r.pbase = base;
   r->r.key = (uintptr_t)heap_rand(h);
+  atomic_store_explicit(&r->r.oheap, h, memory_order_relaxed);
+  r->o.key = r->r.key;
+  r->o.pbase = base;
+  r->o.psize = r->r.psize;
   r->o.prov = 0;
+  r->o.event_at = 0;
   r->o.bump = base;
-  r->o.lflags = 0;
-  atomic_store_explicit(&r->o.free, 0, memory_order_relaxed);
+  r->r.lflags = 0;
+  r->o.lnext = r->o.lprev = NULL;
+  o_set(r, 0, 0);
   atomic_store_explicit(&r->x.xfree, 0, memory_order_relaxed);
   r->x.folded = 0;
   r->x.pnext = r->x.pprev = NULL;
-  /* pend_state is NOT reset: a stale pending-stack entry for this record may
-   * still exist; only pending_drain() clears it (a stale resolve() is
-   * harmless: it acts only on a PENDING it observes, under the pool lock). */
+  /* pend_state and nstate are NOT reset: a stale stack entry for this
+   * record may still exist; only the stacks' drains clear them (a stale
+   * entry is harmless: both drains re-validate the page state). */
   atomic_store_explicit(&r->r.owner, owner, memory_order_relaxed);
 }
 
@@ -153,8 +159,8 @@ static void provision(rec_t *r) {
   if (n > avail) n = avail;
   if (n == 0) return;
   uintptr_t b = r->o.bump;
-  uint64_t f = atomic_load_explicit(&r->o.free, memory_order_relaxed);
-  uintptr_t head = fw_ptr(f);
+  uintptr_t head = o_head(r);
+  uint32_t lcnt = o_cnt(r);
   uintptr_t key = r->r.key;
   if (!g_geo.secure || n < 3) {
     /* Address order (S0). */
@@ -184,8 +190,9 @@ static void provision(rec_t *r) {
     head = b + (uintptr_t)idx[0] * bs;
   }
   r->o.prov += n;
+  if (r->r.lflags != LF_FULL) r->o.event_at = r->o.prov;
   r->o.bump = b + (uintptr_t)n * bs;
-  atomic_store_explicit(&r->o.free, fw_make(head, fw_cnt(f) + n), memory_order_relaxed);   /* COMMIT */
+  o_set(r, head, lcnt + n);
 }
 
 /* Validate a chain of exactly n blocks starting at head and splice it in
@@ -204,16 +211,18 @@ static void merge_chain(rec_t *r, uintptr_t head, uint32_t n) {
     }
     p = nx;
   }
-  uint64_t f = atomic_load_explicit(&r->o.free, memory_order_relaxed);
-  uint32_t cnt = fw_cnt(f) + n;
+  uint32_t cnt = o_cnt(r) + n;
   if (unlikely(cnt > r->o.prov)) soham_fatal("double free detected (free count exceeds blocks)", head);
-  *(uintptr_t *)p = link_enc(key, fw_ptr(f), p);
-  atomic_store_explicit(&r->o.free, fw_make(head, cnt), memory_order_relaxed);        /* COMMIT */
+  *(uintptr_t *)p = link_enc(key, o_head(r), p);
+  o_set(r, head, cnt);
 }
 
-/* Owned page: take every remote free (xfree has no flags while owned). */
+/* Owned page: take every remote free.  An owned page's xfree carries no
+ * flag except WATCH, and WATCH implies an empty chain (it is set only on a
+ * zero count and cleared by the first remote free). */
 static uint32_t collect(rec_t *r) {
-  if (xf_cnt(atomic_load_explicit(&r->x.xfree, memory_order_relaxed)) == 0) return 0;
+  uint64_t x0 = atomic_load_explicit(&r->x.xfree, memory_order_relaxed);
+  if (xf_cnt(x0) == 0) return 0;
   uint64_t x = atomic_exchange_explicit(&r->x.xfree, 0, memory_order_acquire);
   SOHAM_ASSERT((x & XF_FLAGS) == 0);
   uint32_t n = xf_cnt(x);
@@ -221,25 +230,49 @@ static uint32_t collect(rec_t *r) {
   return n;
 }
 
+SOHAM_INLINE bool page_has_free(rec_t *r) {
+  return o_head(r) != 0;
+}
+
 SOHAM_INLINE void *page_pop(rec_t *r) {
-  uint64_t f = atomic_load_explicit(&r->o.free, memory_order_relaxed);
-  uintptr_t b = fw_ptr(f);
+  uintptr_t b = o_head(r);
   if (!b) return NULL;
-  uintptr_t nx = link_dec(r->r.key, *(uintptr_t *)b, b);
-  if (unlikely(nx != 0 && nx - r->r.pbase >= r->r.psize)) soham_fatal("heap corruption: free-list link overwritten", b);
-  atomic_store_explicit(&r->o.free, fw_make(nx, fw_cnt(f) - 1), memory_order_relaxed); /* COMMIT */
+  uintptr_t nx = link_dec(r->o.key, *(uintptr_t *)b, b);
+  if (unlikely(nx != 0 && nx - r->o.pbase >= r->o.psize)) soham_fatal("heap corruption: free-list link overwritten", b);
+  o_set(r, nx, o_cnt(r) - 1);
   return (void *)b;
 }
 
+/* Owner lists (avail, full) are doubly linked through line O. */
+static void list_push(rec_t **head, rec_t *r, uint32_t which) {
+  r->r.lflags = which;
+  /* On the full list the first local free is an event; otherwise only the
+   * free that makes the page completely free is. */
+  r->o.event_at = (which == LF_FULL) ? o_cnt(r) + 1 : r->o.prov;
+  r->o.lprev = NULL;
+  r->o.lnext = *head;
+  if (*head) (*head)->o.lprev = r;
+  *head = r;
+}
+
+static void list_unlink(bin_t *bin, rec_t *r) {
+  rec_t **head = (r->r.lflags == LF_FULL) ? &bin->full : &bin->avail;
+  if (r->o.lprev) r->o.lprev->o.lnext = r->o.lnext; else *head = r->o.lnext;
+  if (r->o.lnext) r->o.lnext->o.lprev = r->o.lprev;
+  r->o.lnext = r->o.lprev = NULL;
+  r->r.lflags = 0;
+  r->o.event_at = r->o.prov;
+}
+
 /* ---------------------------------------------------------------------- */
-/* Class pools and the pending stack                                       */
+/* Class pools, the pending stack and owner notification                   */
 /* ---------------------------------------------------------------------- */
 
 typedef struct {
   soham_lock_t lock;
   _Atomic uint32_t n;      /* pages queued (hint, read without the lock) */
   rec_t *head[3];          /* by free fraction at insertion: [1/8,1/4) [1/4,1/2) [1/2,1) */
-} pool_t;
+} __attribute__((aligned(64))) pool_t;
 
 static pool_t g_pools[SOHAM_NCLASSES];
 
@@ -322,6 +355,57 @@ static void pending_drain(void) {
   }
 }
 
+/* A remote free cleared WATCH on a page of h's full list: tell h.  Lock-free
+ * (also used from signal handlers).  nstate keeps the page on at most one
+ * stack; a stale entry (page detached or reused since) is ignored by the
+ * drain, which re-validates ownership and list membership. */
+static void notify_push(heap_t *h, rec_t *r) {
+  uint32_t z = 0;
+  if (!atomic_compare_exchange_strong_explicit(&r->x.nstate, &z, 1, memory_order_acq_rel, memory_order_relaxed)) return;
+  rec_t *old = atomic_load_explicit(&h->notify, memory_order_relaxed);
+  do { r->x.nnext = old; }
+  while (!atomic_compare_exchange_weak_explicit(&h->notify, &old, r, memory_order_release, memory_order_relaxed));
+}
+
+/* Owner: move notified full pages back to the avail list. */
+static void notify_drain(heap_t *h) {
+  if (!atomic_load_explicit(&h->notify, memory_order_relaxed)) return;
+  rec_t *r = atomic_exchange_explicit(&h->notify, NULL, memory_order_acquire);
+  while (r) {
+    rec_t *nx = r->x.nnext;
+    r->x.nnext = NULL;
+    atomic_store_explicit(&r->x.nstate, 0, memory_order_release);
+    if (atomic_load_explicit(&r->r.owner, memory_order_relaxed) == h->tag && r->r.lflags == LF_FULL &&
+        !(atomic_load_explicit(&r->x.xfree, memory_order_relaxed) & XF_WATCH)) {
+      bin_t *bin = &h->bins[r->r.cls];
+      list_unlink(bin, r);
+      list_push(&bin->avail, r, LF_AVAIL);
+    }
+    r = nx;
+  }
+}
+
+/* Owner: put exhausted page r on the full list, arming WATCH.  Fails (and
+ * collects instead) when remote frees arrived meanwhile.  Returns true when
+ * r went to the full list. */
+static bool page_retire_full(bin_t *bin, rec_t *r) {
+  uint64_t x = atomic_load_explicit(&r->x.xfree, memory_order_relaxed);
+  for (;;) {
+    if (xf_cnt(x)) { collect(r); return false; }
+    if (atomic_compare_exchange_weak_explicit(&r->x.xfree, &x, x | XF_WATCH, memory_order_acq_rel, memory_order_relaxed)) break;
+  }
+  list_push(&bin->full, r, LF_FULL);
+  return true;
+}
+
+/* Owner: disarm WATCH (the page is leaving the full list). */
+static void page_unwatch(rec_t *r) {
+  uint64_t x = atomic_load_explicit(&r->x.xfree, memory_order_relaxed);
+  while (x & XF_WATCH) {
+    if (atomic_compare_exchange_weak_explicit(&r->x.xfree, &x, x & ~XF_WATCH, memory_order_acq_rel, memory_order_relaxed)) break;
+  }
+}
+
 /* Remote free of block a in page rh (one CAS; plan §5.4 remote CAS rule).
  * in_handler: never take a lock; defer resolve through the pending stack. */
 static void remote_free(rec_t *rh, uintptr_t a, bool in_handler) {
@@ -334,7 +418,7 @@ static void remote_free(rec_t *rh, uintptr_t a, bool in_handler) {
     uint32_t cnt = xf_cnt(old) + 1;
     if (unlikely(cnt > cap)) soham_fatal("double free detected (remote count exceeds capacity)", a);
     *(uintptr_t *)a = link_enc(key, head, a);
-    uint64_t nw = xf_make(a, cnt, old & XF_FLAGS);
+    uint64_t nw = xf_make(a, cnt, old & XF_FLAGS & ~XF_WATCH);
     bool responsible = false;
     if ((old & (XF_ORPHAN | XF_QUEUED)) && !(old & XF_PENDING) &&
         (((old & XF_ORPHAN) && cnt >= pending_threshold(cap)) || cnt == cap)) {
@@ -342,6 +426,12 @@ static void remote_free(rec_t *rh, uintptr_t a, bool in_handler) {
       responsible = true;
     }
     if (atomic_compare_exchange_weak_explicit(&rh->x.xfree, &old, nw, memory_order_acq_rel, memory_order_relaxed)) {
+      if (old & XF_WATCH) {
+        /* The CAS acquired the owner's WATCH publication, so oheap is the
+         * heap that owns the page now (or owned it until a later detach). */
+        heap_t *oh = atomic_load_explicit(&rh->r.oheap, memory_order_relaxed);
+        if (oh) notify_push(oh, rh);
+      }
       if (responsible) {
         if (in_handler) pending_push(rh); else resolve(rh);
       }
@@ -350,21 +440,23 @@ static void remote_free(rec_t *rh, uintptr_t a, bool in_handler) {
   }
 }
 
-/* Detach an owned page from its heap (holder only; the bins entry has
- * already been replaced).  plan §5.4 Detach, with owner cleared before the
+/* Detach an owned page from its heap (holder only; the page is already off
+ * the heap's lists).  plan §5.4 Detach, with owner cleared before the
  * ORPHAN publication so a later claimer's owner store cannot be undone. */
 static void page_detach(rec_t *r) {
   atomic_store_explicit(&r->r.owner, OWNER_NONE, memory_order_relaxed);
-  uint32_t lc = fw_cnt(atomic_load_explicit(&r->o.free, memory_order_relaxed));
+  r->r.lflags = 0;
+  r->o.lnext = r->o.lprev = NULL;
+  uint32_t lc = o_cnt(r);
   uint32_t folded = lc + (r->r.cap - r->o.prov);
   r->x.folded = folded;
   uint32_t cap = r->r.cap;
   uint64_t old = atomic_load_explicit(&r->x.xfree, memory_order_relaxed);
   bool responsible;
   for (;;) {
-    SOHAM_ASSERT((old & XF_FLAGS) == 0);
+    SOHAM_ASSERT((old & (XF_ORPHAN | XF_QUEUED | XF_PENDING)) == 0);
     uint32_t cnt = xf_cnt(old) + folded;
-    uint64_t nw = xf_make(xf_ptr(old), cnt, XF_ORPHAN);
+    uint64_t nw = xf_make(xf_ptr(old), cnt, XF_ORPHAN);      /* drops WATCH */
     responsible = cnt >= pending_threshold(cap) || cnt == cap;
     if (responsible) nw |= XF_PENDING;
     if (atomic_compare_exchange_weak_explicit(&r->x.xfree, &old, nw, memory_order_acq_rel, memory_order_relaxed)) break;
@@ -384,6 +476,10 @@ static rec_t *pool_claim(heap_t *h, unsigned c) {
   soham_unlock(&pl->lock);
   uint32_t chain = xf_cnt(x) - r->x.folded;
   merge_chain(r, xf_ptr(x), chain);
+  r->r.lflags = 0;
+  r->o.event_at = r->o.prov;
+  r->o.lnext = r->o.lprev = NULL;
+  atomic_store_explicit(&r->r.oheap, h, memory_order_relaxed);
   atomic_store_explicit(&r->r.owner, h->tag, memory_order_relaxed);
   return r;
 }
@@ -408,7 +504,10 @@ static heap_t *heap_create_locked(void) {
   if (!h) return NULL;
   h->tag = ++g_heap_count;
   h->rng = mix64(g_rng_seed ^ ((uint64_t)h->tag << 32)) | 1;
-  for (unsigned c = 0; c < SOHAM_NCLASSES; c++) h->bins[c].cur = h->bins[c].alt = &g_sentinel;
+  for (unsigned c = 0; c < SOHAM_NCLASSES; c++) {
+    h->bins[c].cur = &g_sentinel;
+    h->bins[c].avail = h->bins[c].full = NULL;
+  }
   h->all_next = g_heap_all;
   g_heap_all = h;
   return h;
@@ -420,7 +519,7 @@ static rec_t *page_new(heap_t *h, unsigned c) {
     page_init(h, r, c, r->r.pbase, 1, h->tag);
     return r;
   }
-  uint32_t k = g_class_page[c] >> g_geo.sshift;
+  uint32_t k = g_class_page[c] >> SOHAM_SLICE_SHIFT;
   bool zero;
   uintptr_t a = ph_alloc_slices(k, &zero);
   if (!a) return NULL;
@@ -429,42 +528,40 @@ static rec_t *page_new(heap_t *h, unsigned c) {
   return r;
 }
 
+/* Make r usable: collect its remote frees, provision if needed. */
+SOHAM_INLINE bool page_ready(rec_t *r) {
+  if (page_has_free(r)) return true;
+  if (collect(r)) return true;
+  if (r->o.prov < r->r.cap) { provision(r); return true; }
+  return false;
+}
+
 /* Allocation from bin c when cur is empty (busy held). */
 static SOHAM_NOINLINE void *bin_refill(heap_t *h, unsigned c) {
   pending_drain();
   bin_t *bin = &h->bins[c];
   rec_t *r = bin->cur;
   if (r != &g_sentinel) {
-    if (collect(r) == 0 && r->o.prov < r->r.cap) provision(r);
-    void *p = page_pop(r);
-    if (p) return p;
-  }
-  if (c < SOHAM_NSMALL && bin->alt != &g_sentinel) {
-    rec_t *a = bin->alt;
-    if (collect(a) == 0 && a->o.prov < a->r.cap) provision(a);
-    if (fw_ptr(atomic_load_explicit(&a->o.free, memory_order_relaxed))) {
-      bin->cur = a;
-      bin->alt = r;              /* may be the sentinel */
-      return page_pop(a);
-    }
-  }
-  /* cur (and alt) are full: keep the newest full page as alt (small), and
-   * detach the other so frees can make it available to every heap. */
-  if (r != &g_sentinel) {
+    if (page_ready(r)) return page_pop(r);
+    /* cur is exhausted: retire it to the full list (WATCH armed), unless
+     * remote frees arrived in the meantime. */
     bin->cur = &g_sentinel;
-    if (c < SOHAM_NSMALL) {
-      rec_t *old = bin->alt;
-      bin->alt = r;
-      if (old != &g_sentinel) page_detach(old);
-    } else {
-      page_detach(r);
-    }
+    if (!page_retire_full(bin, r)) { bin->cur = r; return page_pop(r); }
   }
+  notify_drain(h);
+  /* Owned pages with free space. */
+  while (bin->avail) {
+    rec_t *a = bin->avail;
+    list_unlink(bin, a);
+    if (page_ready(a)) { bin->cur = a; return page_pop(a); }
+    if (!page_retire_full(bin, a)) { bin->cur = a; return page_pop(a); }
+  }
+  /* Shared pages, then a fresh page. */
   rec_t *n = pool_claim(h, c);
   if (!n) n = page_new(h, c);
   if (!n) return NULL;
   bin->cur = n;
-  if (!fw_ptr(atomic_load_explicit(&n->o.free, memory_order_relaxed)) && n->o.prov < n->r.cap) provision(n);
+  if (!page_ready(n)) return NULL;   /* cannot happen: a claimed page has >= 1/8 free */
   return page_pop(n);
 }
 
@@ -473,32 +570,45 @@ SOHAM_INLINE void *bin_alloc(heap_t *h, unsigned c) {
   return likely(p != NULL) ? p : bin_refill(h, c);
 }
 
-/* A local free made every provisioned block of rh free (busy held). */
-static SOHAM_NOINLINE void page_empty(heap_t *h, rec_t *rh) {
+/* A local free hit a page that is on the full list, or made every
+ * provisioned block of the page free (busy held). */
+static SOHAM_NOINLINE void page_local_event(heap_t *h, rec_t *rh, uint32_t cnt) {
   bin_t *bin = &h->bins[rh->r.cls];
-  if (bin->cur == rh) return;                 /* keep the current page */
-  if (bin->alt == rh) {
-    bin->alt = &g_sentinel;
-    if (rh->r.kind == KIND_SMALL && h->nspares < (uint8_t)g_cfg.max_spares) {
-      atomic_store_explicit(&rh->r.owner, OWNER_SPARE, memory_order_relaxed);
-      h->spares[h->nspares++] = rh;
-      return;
-    }
-    SOHAM_ASSERT(xf_cnt(atomic_load_explicit(&rh->x.xfree, memory_order_relaxed)) == 0);
-    page_release(rh);
+  if (rh->r.lflags == LF_FULL) {
+    page_unwatch(rh);
+    list_unlink(bin, rh);
+    list_push(&bin->avail, rh, LF_AVAIL);
+  }
+  if (cnt != rh->o.prov || bin->cur == rh) return;
+  /* Fully free and not the current page: the remote chain must be empty
+   * (every provisioned block is on the local list). */
+  list_unlink(bin, rh);
+  SOHAM_ASSERT(xf_cnt(atomic_load_explicit(&rh->x.xfree, memory_order_relaxed)) == 0);
+  if (rh->r.kind == KIND_SMALL && h->nspares < (uint8_t)g_cfg.max_spares) {
+    atomic_store_explicit(&rh->r.owner, OWNER_SPARE, memory_order_relaxed);
+    h->spares[h->nspares++] = rh;
     return;
   }
-  SOHAM_ASSERT(!"owned page not referenced by its heap");
+  page_release(rh);
 }
 
 /* Detach every page of h (thread exit, collect). */
 static void heap_flush(heap_t *h) {
+  /* Stale notify entries only: the drain below ignores pages we detach. */
+  rec_t *n = atomic_exchange_explicit(&h->notify, NULL, memory_order_acquire);
+  while (n) {
+    rec_t *nx = n->x.nnext;
+    n->x.nnext = NULL;
+    atomic_store_explicit(&n->x.nstate, 0, memory_order_release);
+    n = nx;
+  }
   for (unsigned c = 0; c < SOHAM_NCLASSES; c++) {
     bin_t *bin = &h->bins[c];
-    rec_t *cur = bin->cur, *alt = bin->alt;
-    bin->cur = bin->alt = &g_sentinel;
+    rec_t *cur = bin->cur;
+    bin->cur = &g_sentinel;
     if (cur != &g_sentinel) { collect(cur); page_detach(cur); }
-    if (alt != &g_sentinel) { collect(alt); page_detach(alt); }
+    while (bin->avail) { rec_t *r = bin->avail; list_unlink(bin, r); collect(r); page_detach(r); }
+    while (bin->full) { rec_t *r = bin->full; list_unlink(bin, r); page_detach(r); }
   }
   while (h->nspares) page_release(h->spares[--h->nspares]);
 }
@@ -509,16 +619,16 @@ static void heap_flush(heap_t *h) {
 
 /* Allocate a run of at least n bytes.  hb_align: start on a hugeblock. */
 static void *run_alloc(size_t n, bool hb_align, bool *zero) {
-  size_t k = (n + g_geo.S - 1) >> g_geo.sshift;
+  size_t k = (n + g_geo.S - 1) >> SOHAM_SLICE_SHIFT;
   uintptr_t a = (k <= HB_SLICES && !hb_align) ? ph_alloc_slices((unsigned)k, zero) : ph_alloc_hbs(k, zero);
   if (!a) return NULL;
   rec_t *r = rec_of(a);
-  for (size_t i = 1; i < k; i++) { r[i].r.head_delta = (uint32_t)i; r[i].r.kind = KIND_RUN; }
+  for (size_t i = 1; i < k; i++) { r[i].r.head_delta = (uint32_t)(i * REC_SIZE); r[i].r.kind = KIND_RUN; }
   r->r.head_delta = 0;
   r->r.kind = KIND_RUN;
   r->r.cls = 0xff;
   r->r.pbase = a;
-  r->r.psize = (uint32_t)(k << g_geo.sshift);
+  r->r.psize = (uint32_t)(k << SOHAM_SLICE_SHIFT);
   r->r.bsize = r->r.psize;
   r->r.cap = 1;
   r->r.nslices = (uint32_t)k;

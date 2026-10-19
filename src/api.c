@@ -142,9 +142,9 @@ static size_t pow2_floor(size_t v) {
 static bool geometry_init(void) {
   size_t B = soham_os_page_size();
   size_t S = B > 64 * KiB ? B : 64 * KiB;
+  if (S != ((size_t)1 << SOHAM_SLICE_SHIFT)) return false;   /* rebuild with SOHAM_SLICE_SHIFT */
   g_geo.B = B;
   g_geo.S = S;
-  g_geo.sshift = log2_exact(S);
   g_geo.H = HB_SLICES * S;
 #if SOHAM_64BIT
   size_t W = 4 * GiB;
@@ -165,9 +165,10 @@ static bool geometry_init(void) {
   g_geo.W = W;
   g_geo.wshift = log2_exact(W);
   g_geo.wmask = W - 1;
+  g_geo.wbase = ~(uintptr_t)(W - 1);
   size_t nhb_total = W / g_geo.H;
   size_t rec_off = (B + nhb_total * sizeof(hbmeta_t) + B - 1) & ~(B - 1);
-  size_t rec_bytes = (W >> g_geo.sshift) * REC_SIZE;
+  size_t rec_bytes = (W >> SOHAM_SLICE_SHIFT) * REC_SIZE;
   size_t meta = (rec_off + rec_bytes + B - 1) & ~(B - 1);
   size_t data_off = (meta + B + g_geo.H - 1) & ~(g_geo.H - 1);
   if (data_off + 2 * g_geo.H > W) return false;
@@ -179,7 +180,7 @@ static bool geometry_init(void) {
   void *gm = soham_os_map_rw((gn + B - 1) & ~(B - 1), B);
   if (!gm) return false;
   soham_os_advise_nohuge(gm, (gn + B - 1) & ~(B - 1));
-  g_geo.gmap = (_Atomic uint8_t *)gm;
+  atomic_store_explicit(&g_geo.gmap, (_Atomic uint8_t *)gm, memory_order_relaxed);
   g_gmap_n_pending = gn;
   return true;
 }
@@ -209,8 +210,10 @@ static SOHAM_NOINLINE bool soham_init(void) {
       /* These may allocate: the recursion lands in the bss arena. */
       soham_os_thread_key_init(thread_exit_cb);
       soham_os_atfork(fork_prepare, fork_parent, fork_child);
-      /* Publish the geometry to the free fast path last. */
-      atomic_store_explicit(&g_geo.gmap_n, g_gmap_n_pending, memory_order_release);
+      /* Publish the geometry to the free fast path last: a reader that sees
+       * the new mask also sees the new map and shift (acquire). */
+      g_geo.amask = g_geo.secure ? ~(uintptr_t)0 : 15;
+      atomic_store_explicit(&g_geo.gmask, g_gmap_n_pending - 1, memory_order_release);
       t->state = TLS_NEW;
       atomic_store_explicit(&g_init_state, 2, memory_order_release);
       return true;
@@ -342,19 +345,24 @@ static SOHAM_NOINLINE void *alloc_slow(size_t n, bool *zero) {
   return p;
 }
 
+static SOHAM_NOINLINE void *malloc_slow(size_t n) {
+  bool zero;
+  return alloc_slow(n, &zero);
+}
+
 SOHAM_API void *soham_malloc(size_t n) {
   soham_tls_t *t = &t_tls;
   heap_t *h = t->heap;
-  if (likely(n <= SOHAM_LUT_MAX && h != NULL && !atomic_load_explicit(&t->busy, memory_order_relaxed))) {
+  if (likely(h != NULL && n <= SOHAM_FAST_MAX && !atomic_load_explicit(&t->busy, memory_order_relaxed))) {
+    unsigned c = likely(n <= SOHAM_LUT_MAX) ? g_lut[(n + 15) >> 4] : size_class_large(n);
     atomic_store_explicit(&t->busy, 1, memory_order_relaxed);
     signal_fence();
-    rec_t *r = h->bins[g_lut[(n + 15) >> 4]].cur;
-    uint64_t f = atomic_load_explicit(&r->o.free, memory_order_relaxed);
-    uintptr_t b = fw_ptr(f);
+    rec_t *r = h->bins[c].cur;
+    uintptr_t b = o_head(r);
     if (likely(b != 0)) {
-      uintptr_t nx = link_dec(r->r.key, *(uintptr_t *)b, b);
-      if (likely(nx - r->r.pbase < r->r.psize || nx == 0)) {
-        atomic_store_explicit(&r->o.free, fw_make(nx, fw_cnt(f) - 1), memory_order_relaxed);  /* COMMIT */
+      uintptr_t nx = link_dec(r->o.key, *(uintptr_t *)b, b);
+      if (likely(nx - r->o.pbase < r->o.psize || nx == 0)) {
+        o_set(r, nx, o_cnt(r) - 1);
         signal_fence();
         atomic_store_explicit(&t->busy, 0, memory_order_relaxed);
         return (void *)b;
@@ -364,8 +372,7 @@ SOHAM_API void *soham_malloc(size_t n) {
     signal_fence();
     atomic_store_explicit(&t->busy, 0, memory_order_relaxed);
   }
-  bool zero;
-  return alloc_slow(n, &zero);
+  return malloc_slow(n);
 }
 
 SOHAM_API void *soham_calloc(size_t count, size_t n) {
@@ -374,7 +381,7 @@ SOHAM_API void *soham_calloc(size_t count, size_t n) {
     errno = ENOMEM;
     return NULL;
   }
-  if (total <= SOHAM_LUT_MAX) {
+  if (total <= SOHAM_FAST_MAX) {
     void *p = soham_malloc(total);
     if (p) memset(p, 0, total);
     return p;
@@ -421,7 +428,7 @@ static SOHAM_NOINLINE void free_slow(void *p) {
   bool in_handler = atomic_load_explicit(&t->busy, memory_order_relaxed) != 0;
   if (!in_window(a)) { free_nonarena(p, a, t, in_handler); return; }
   rec_t *r = rec_of(a);
-  rec_t *rh = r - r->r.head_delta;
+  rec_t *rh = rec_head(r);
   uint8_t kind = rh->r.kind;
   if (unlikely(kind == KIND_NONE)) invalid_free(a, "free of an invalid pointer (not an allocated block)");
   if (unlikely(a & 15)) invalid_free(a, "free of a misaligned pointer");
@@ -444,13 +451,12 @@ static SOHAM_NOINLINE void free_slow(void *p) {
     signal_fence();
     heap_t *h = t->heap;
     if (h && atomic_load_explicit(&rh->r.owner, memory_order_relaxed) == t->tag) {
-      uint64_t f = atomic_load_explicit(&rh->o.free, memory_order_relaxed);
-      uintptr_t head = fw_ptr(f);
+      uintptr_t head = o_head(rh);
       if (unlikely(head == a)) soham_fatal("double free detected", a);
-      *(uintptr_t *)a = link_enc(rh->r.key, head, a);
-      uint32_t cnt = fw_cnt(f) + 1;
-      atomic_store_explicit(&rh->o.free, fw_make(a, cnt), memory_order_relaxed);         /* COMMIT */
-      if (cnt == rh->o.prov) page_empty(h, rh);
+      *(uintptr_t *)a = link_enc(rh->o.key, head, a);
+      uint32_t cnt = o_cnt(rh) + 1;
+      o_set(rh, a, cnt);
+      if (cnt == rh->o.event_at) page_local_event(h, rh, cnt);
     } else {
       remote_free(rh, a, false);
     }
@@ -464,24 +470,22 @@ static SOHAM_NOINLINE void free_slow(void *p) {
 
 SOHAM_API void soham_free(void *p) {
   uintptr_t a = (uintptr_t)p & SOHAM_ADDR_MASK;
-  uintptr_t g = a >> g_geo.wshift;
+  uintptr_t g = (a >> g_geo.wshift) & atomic_load_explicit(&g_geo.gmask, memory_order_acquire);
   soham_tls_t *t = &t_tls;
-  if (likely(g < atomic_load_explicit(&g_geo.gmap_n, memory_order_acquire) &&
-             atomic_load_explicit(&g_geo.gmap[g], memory_order_relaxed) == GM_WINDOW &&
-             t->heap != NULL && (a & 15) == 0 && !g_geo.secure &&
+  if (likely(atomic_load_explicit(&atomic_load_explicit(&g_geo.gmap, memory_order_relaxed)[g], memory_order_relaxed) == GM_WINDOW &&
+             (a & g_geo.amask) == 0 && t->heap != NULL &&
              !atomic_load_explicit(&t->busy, memory_order_relaxed))) {
     rec_t *r = rec_of(a);
-    rec_t *rh = r - r->r.head_delta;
+    rec_t *rh = rec_head(r);
     atomic_store_explicit(&t->busy, 1, memory_order_relaxed);
     signal_fence();
     if (likely(atomic_load_explicit(&rh->r.owner, memory_order_relaxed) == t->tag)) {
-      uint64_t f = atomic_load_explicit(&rh->o.free, memory_order_relaxed);
-      uintptr_t head = fw_ptr(f);
+      uintptr_t head = o_head(rh);
       if (unlikely(head == a)) soham_fatal("double free detected", a);
-      *(uintptr_t *)a = link_enc(rh->r.key, head, a);
-      uint32_t cnt = fw_cnt(f) + 1;
-      atomic_store_explicit(&rh->o.free, fw_make(a, cnt), memory_order_relaxed);         /* COMMIT */
-      if (unlikely(cnt == rh->o.prov)) page_empty(t->heap, rh);
+      *(uintptr_t *)a = link_enc(rh->o.key, head, a);
+      uint32_t cnt = o_cnt(rh) + 1;
+      o_set(rh, a, cnt);
+      if (unlikely(cnt == rh->o.event_at)) page_local_event(t->heap, rh, cnt);
       signal_fence();
       atomic_store_explicit(&t->busy, 0, memory_order_relaxed);
       return;
@@ -501,7 +505,7 @@ SOHAM_API size_t soham_usable_size(const void *p) {
   if (!p) return 0;
   if (in_window(a)) {
     rec_t *r = rec_of(a);
-    rec_t *rh = r - r->r.head_delta;
+    rec_t *rh = rec_head(r);
     if (rh->r.kind == KIND_RUN) return rh->r.psize - (a - rh->r.pbase);
     if (rh->r.kind == KIND_NONE) return 0;
     return rh->r.bsize;
@@ -518,7 +522,7 @@ SOHAM_API void *soham_realloc(void *p, size_t n) {
   size_t us;
   if (in_window(a)) {
     rec_t *r = rec_of(a);
-    rec_t *rh = r - r->r.head_delta;
+    rec_t *rh = rec_head(r);
     if (rh->r.kind == KIND_NONE) invalid_free(a, "realloc of an invalid pointer");
     us = rh->r.kind == KIND_RUN ? rh->r.psize : rh->r.bsize;
     /* Keep the block when it still fits and would not waste over half. */
@@ -662,7 +666,7 @@ static void walk_pages(walk_t *wk) {
       while (used) {
         unsigned s = (unsigned)__builtin_ctz(used);
         used &= used - 1;
-        uintptr_t a = hb_addr(hb) + ((uintptr_t)s << g_geo.sshift);
+        uintptr_t a = hb_addr(hb) + ((uintptr_t)s << SOHAM_SLICE_SHIFT);
         rec_t *r = rec_of(a);
         if (r->r.head_delta != 0) continue;
         if (r->r.kind == KIND_RUN) { wk->in_use += r->r.psize; wk->runs++; continue; }
@@ -673,7 +677,7 @@ static void walk_pages(walk_t *wk) {
         uint64_t x = atomic_load_explicit(&r->x.xfree, memory_order_relaxed);
         uint32_t freeb;
         if (x & (XF_ORPHAN | XF_QUEUED)) freeb = xf_cnt(x);
-        else freeb = fw_cnt(atomic_load_explicit(&r->o.free, memory_order_relaxed)) + xf_cnt(x) + (cap - r->o.prov);
+        else freeb = o_cnt(r) + xf_cnt(x) + (cap - r->o.prov);
         if (freeb > cap) freeb = cap;
         wk->in_use += (size_t)(cap - freeb) * bs;
         if (owner >= 1 && owner <= SOHAM_MAX_TAG) wk->cached_heaps += (size_t)freeb * bs;
@@ -764,16 +768,15 @@ SOHAM_API int soham_check_heap(void) {
       while (used) {
         unsigned s = (unsigned)__builtin_ctz(used);
         used &= used - 1;
-        rec_t *r = rec_of(hb_addr(hb) + ((uintptr_t)s << g_geo.sshift));
+        rec_t *r = rec_of(hb_addr(hb) + ((uintptr_t)s << SOHAM_SLICE_SHIFT));
         if (r->r.head_delta) continue;
         if (r->r.kind == KIND_NONE) { errors++; continue; }
         if (r->r.kind == KIND_RUN) continue;
         if (r->r.cap == 0 || (size_t)r->r.cap * r->r.bsize > r->r.psize) { errors++; continue; }
         uint32_t owner = atomic_load_explicit(&r->r.owner, memory_order_relaxed);
         if (t->heap && owner == t->tag) {
-          uint64_t f = atomic_load_explicit(&r->o.free, memory_order_relaxed);
-          uint32_t n = fw_cnt(f), k = 0;
-          uintptr_t p = fw_ptr(f);
+          uint32_t n = o_cnt(r), k = 0;
+          uintptr_t p = o_head(r);
           while (p && k <= n) {
             if (!block_ok(r, p) || p >= r->o.bump) { errors++; break; }
             p = link_dec(r->r.key, *(uintptr_t *)p, p);
