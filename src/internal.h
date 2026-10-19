@@ -50,6 +50,9 @@
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define SOHAM_INLINE static inline __attribute__((always_inline))
 #define SOHAM_NOINLINE __attribute__((noinline))
+/* Hot entry points start on a cache line: their speed should not depend
+ * on the size of whatever code the linker placed before them. */
+#define SOHAM_HOT __attribute__((aligned(64)))
 #define SOHAM_COLD __attribute__((cold, noinline))
 
 #if defined(_WIN32)
@@ -303,10 +306,17 @@ struct heap_s {
 
 enum { TLS_NEW = 0, TLS_ATTACHED = 1, TLS_DEAD = 2, TLS_INIT = 3 };
 
+/* tls.busy bits.  BUSY_IN: inside the allocator (reentry is a signal
+ * handler).  BUSY_NOHEAP: no heap attached (new or exited thread); every
+ * thread's TLS starts with it.  Both fast paths test busy == 0 only, which
+ * also guarantees heap != NULL and tag valid. */
+#define BUSY_IN     1u
+#define BUSY_NOHEAP 2u
+
 typedef struct {
   heap_t *heap;            /* NULL until attached */
   uint32_t tag;            /* heap->tag, or 0 */
-  _Atomic uint8_t busy;    /* inside the allocator: reentry is a signal handler */
+  _Atomic uint8_t busy;    /* BUSY_IN | BUSY_NOHEAP; 0 = the fast paths may run */
   uint8_t state;
   uint8_t trymode;         /* handler context: every lock is a trylock (§5.3) */
   uint8_t pad;

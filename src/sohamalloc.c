@@ -21,7 +21,7 @@ static uintptr_t g_secret;
 static size_t g_gmap_n_pending;          /* gmap entries (published at init end) */
 static _Atomic int g_init_state;         /* 0 none, 1 running, 2 done */
 
-static _Thread_local soham_tls_t t_tls SOHAM_TLS_MODEL;
+static _Thread_local soham_tls_t t_tls SOHAM_TLS_MODEL = { .busy = BUSY_NOHEAP };
 
 static inline uintptr_t g_secret_word(void) { return g_secret; }
 

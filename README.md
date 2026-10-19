@@ -10,7 +10,7 @@ LD_PRELOAD=/path/to/libsohamalloc.so ./your-program   # drop-in, no code changes
 
 | Feature | What it means for you |
 |---|---|
-| **Gives memory back automatically** | Free resident memory above a small limit goes back to the kernel at once, in batched `process_madvise` calls. Freeing 1 GiB leaves about 50 MB RSS. glibc, jemalloc and mimalloc keep about 1 GiB until `malloc_trim`, and tcmalloc keeps about 600 MB. |
+| **Gives memory back automatically** | Free resident memory above a small limit goes back to the kernel at once, in batched `process_madvise` calls. Freeing 1 GiB leaves about 50 MB RSS. glibc, jemalloc and mimalloc keep about 1 GiB until `malloc_trim`, and tcmalloc keeps about 600 MB. The limit follows the recent swing of the live size, so a program that repeatedly frees and re-allocates big buffers keeps the memory it is about to reuse instead of re-faulting it. |
 | **Out-of-line metadata** | Allocator bookkeeping lives in a separate, guard-separated area (192-byte slice records), not next to your data. A heap overflow cannot corrupt the allocator. |
 | **Encoded free lists** | Free-list links are stored as `bswap(next ^ key ^ addr>>12)` with a per-page random key, and are bounds-checked on every allocation. A use-after-free write is detected instead of being turned into an arbitrary write. |
 | **Foreign and invalid pointer detection** | A granule map identifies sohamalloc's memory. `free()` of a stack, global or foreign pointer is detected (leaked with a warning, or aborted in secure mode). Double frees are detected. |
@@ -29,13 +29,14 @@ cmake --build build -j
 
 | Artifact | Use |
 |---|---|
-| `build/libsohamalloc.so` | `LD_PRELOAD` override of the whole malloc family, the glibc aliases and C++ `new`/`delete` |
+| `build/libsohamalloc.so` | `LD_PRELOAD` override of the whole malloc family, the glibc aliases and C++ `new`/`delete`. Depends on libc only (the C++ operators are written in C), so preloading it into a C program adds no libstdc++ |
 | `build/libsohamalloc.a` | Static override: link it into your program |
 | `build/libsohamalloc-prefixed.a` | Only the `soham_*` API (no override). Use it to embed sohamalloc next to another allocator, or for sanitizer testing |
 
 Options:
 - `-DSOHAM_DEBUG=ON`: internal assertions.
 - `-DSOHAM_SANITIZE=thread|address|undefined`: sanitizer build of the prefixed library.
+- `-DSOHAM_CXX=OFF`: leave out the C++ operator overrides.
 
 ## Configure (environment)
 

@@ -19,8 +19,7 @@ Read it alongside `src/`. Section references (§n) point to the spec; "plan §n"
 | `src/sohamalloc.c` | The core is one translation unit (inlining across parts). It holds the globals and includes the three parts below |
 | `src/pageheap.c` | Size classes; windows and commit growth; hugeblock bitmaps; best-fit slice allocation; the release (decay / excess) engine |
 | `src/heap.c` | Metadata arena; static (bss) arena; records; provisioning; local lists; remote free; owner notification; detach/claim; class pools; pending stack; refill; runs; solos |
-| `src/api.c` | Diagnostics; locks; configuration; init; thread attach/exit; malloc/free fast and slow paths; calloc/realloc/aligned; stats; explain report; check; fork; internals for tests; overrides |
-| `src/sohamalloc_cxx.cpp` | Global `operator new`/`delete` (all forms) |
+| `src/api.c` | Diagnostics; locks; configuration; init; thread attach/exit; malloc/free fast and slow paths; calloc/realloc/aligned; stats; explain report; check; fork; internals for tests; overrides, including every global C++ `operator new`/`delete`, written in C under their mangled names |
 | `src/os.h`, `src/os_posix.c`, `src/os_windows.c` | The OS layer. Every OS call goes through it; errno is preserved |
 | `src/internal_test.h` | Internals exported for property tests |
 
@@ -28,7 +27,7 @@ Read it alongside `src/`. Section references (§n) point to the spec; "plan §n"
 
 | Library | Contents |
 |---|---|
-| `libsohamalloc.so` / `.a` | Override of malloc, the glibc aliases and C++ operators |
+| `libsohamalloc.so` / `.a` | Override of malloc, the glibc aliases and C++ operators. Depends on libc only: no libstdc++, so preloading it into a C program loads nothing else |
 | `libsohamalloc-prefixed.a` | `soham_*` only |
 
 ## 2. Address space
@@ -77,7 +76,7 @@ window (W bytes, W-aligned; W = 4 GiB on 64-bit, 256 MiB on 32-bit or under TSan
 
 - **I1.** `owner == tag` ⇒ the page is `bins[c].cur`, or on `bins[c].avail` or `bins[c].full` of that heap. `r.lflags` says which list.
 - **H1.** A heap is held by exactly one thread at a time: its running thread, or a thread holding it exclusively (the pool, or the fork child). Only the holder changes owner words of its pages. So the local-free check `owner == tag` cannot be invalidated between the check and the store.
-- **H2.** `tls.busy` is set around every allocator operation of the thread. A signal handler that finds it set never touches the thread's heap:
+- **H2.** `tls.busy` is set around every allocator operation of the thread that touches its heap or takes any allocator lock: the fast paths, the slow paths, init and heap attach (`thread_prepare`), thread exit, `soham_collect`, `soham_get_stats` and `soham_check_heap` (`busy_enter`/`busy_leave`). A signal handler that finds it set never touches the thread's heap and never waits for a lock:
   - its mallocs use the shared heap via trylock (`trymode`), or the static arena;
   - its frees use the lock-free remote path, or the deferred list for runs and solos.
 
@@ -87,10 +86,10 @@ window (W bytes, W-aligned; W = 4 GiB on 64-bit, 256 MiB on 32-bit or under TSan
 
 ```
 loop: old = xfree; *a = enc(old.head)
-      new = {old.count + 1, a, old.flags & ~WATCH}
+      new = {old.count + 1, a, old.flags}; if WATCH && count + 1 >= unfull: drop WATCH (notify)
       if (ORPHAN|QUEUED) && !PENDING && ((ORPHAN && count >= cap/8) || count == cap): new |= PENDING  (responsible)
       CAS(old -> new, acq_rel)
-after: if old had WATCH -> notify_push(oheap, page)
+after: if WATCH dropped -> notify_push(oheap, page)
        if responsible   -> resolve(page)  (handler context: pending_push)
 ```
 
@@ -100,10 +99,11 @@ Checks on every remote free: head == a (immediate double free), and count > cap 
 
 When a heap retires its exhausted `cur` page to the full list, it sets WATCH with a CAS. The CAS succeeds only on a zero remote count; otherwise the page collects its remote frees and stays `cur`.
 
-- The first remote free clears WATCH in its CAS and pushes the page onto `oheap->notify`, a Treiber stack.
+- The remote free that brings the remote count to `unfull = max(1, cap/8)` clears WATCH in its CAS and pushes the page onto `oheap->notify`, a Treiber stack. While WATCH is set the chain may be non-empty; full-list pages are never collected, and detach drops WATCH in its own CAS.
 - `nstate` keeps the page on at most one stack.
 - The owner's refill drains the stack (one exchange). It moves a page from full to avail only if the page is still owned by it, still on the full list, and not re-armed. Stale entries are ignored.
-- A local free into a full-list page disarms WATCH and moves the page to avail.
+- The local free that brings the local count to `unfull` disarms WATCH and moves the page to avail (`event_at = unfull` on the full list).
+- **Why a threshold.** Returning a page at its first free made each refill yield a single block and retire the page again: under random-order frees (alloc-test) 28% of all mallocs took the slow path. With the threshold a refill yields at least cap/8 blocks (0.07% slow path), at the cost of at most cap/8 − 1 idle blocks per full page, counted separately for local and remote frees.
 
 ### 5.3 Detach and claim (exited threads)
 
@@ -139,8 +139,10 @@ The page heap tracks four slice states: used, dirty (free and resident), zero (f
 | Mode | What it releases |
 |---|---|
 | decay | Hugeblocks dirty for ≥ `decay_ns`. Checked at most every `purge_interval_ns`, on page-heap allocations and frees |
-| excess | Free resident memory above `max(dirty_min, used / dirty_div)`. Wholly free hugeblocks go first |
+| excess | Free resident memory above the dirty limit (below). Wholly free hugeblocks go first |
 | all | Everything free: `soham_collect(1)`, `malloc_trim` |
+
+**Dirty limit.** `max(dirty_min, used / dirty_div, swing)`, where `swing = min(peak − used, used · peak_num / 4)` and `peak` is the largest `used` of the current and previous decay epoch. A program whose live size oscillates (malloc-large frees a 20 MiB buffer and allocates another) keeps the memory it is about to reuse instead of releasing and re-faulting it on every cycle; decay still returns it once the swing stops. The cap means a program that frees nearly everything keeps almost nothing (freeing 1 GiB still drops to about 50 MB). Large runs (≥ one hugeblock) pick, among the free hugeblock runs long enough, the one with the most resident slices, so reuse costs no page faults.
 
 **Each release pass:**
 
@@ -152,11 +154,11 @@ No release syscall runs under the lock. The only syscalls made under the page-he
 
 **Profiles:**
 
-| Profile | decay | dirty limit | advice |
-|---|---|---|---|
-| balanced | 1 s | max(32 MiB, used/8) | DONTNEED |
-| memory | 100 ms | max(8 MiB, used/32) | DONTNEED, no spares |
-| throughput | 10 s | max(256 MiB, used/2) | MADV_FREE (+MADV_HUGEPAGE if THP=madvise) |
+| Profile | decay | dirty limit | swing cap | advice |
+|---|---|---|---|---|
+| balanced | 1 s | max(32 MiB, used/8) | used | DONTNEED |
+| memory | 100 ms | max(8 MiB, used/32) | used/4 | DONTNEED, no spares |
+| throughput | 10 s | max(256 MiB, used/2) | 2 × used | MADV_FREE (+MADV_HUGEPAGE if THP=madvise) |
 
 ## 6. Locks and their order
 
@@ -188,7 +190,8 @@ The fork-prepare handler takes them in exactly this order; the parent and child 
 4. **Window size.** 4 GiB on 64-bit, not the plan's 64 GiB: less VSZ, and 32-bit targets are possible.
 5. **No orphan list.** An orphaned page with less than 1/8 free waits on no list until frees make it PENDING. This strands at most 1/8 of each such page.
 6. **Handler mallocs.** The shared heap under trylock, in `trymode`, instead of the static arena only. This fixes `tests/regress/signal_reentrant_enomem.c`.
-7. **Owner field placement.** owner, key and pbase live in the head record only (plus owner-side copies of key, pbase and psize in line O). Non-head slices carry only `head_delta` and `kind`.
+7. **C++ operators in C.** The spec had a C++ translation unit. The operators are now C functions with the mangled names (`__asm__` labels). The throwing forms call the new_handler through a weak `std::get_new_handler` and throw through a weak `std::__throw_bad_alloc` (the C frames have unwind tables). The nothrow forms must return null when the handler throws, which needs a catch that C cannot write. On failure with a handler installed, they delegate to the C++ runtime's own nothrow operator (found once with `dlsym(RTLD_NEXT)`), which is exactly `try { return ::operator new(n); } catch (...) { return nullptr; }`, and its `::operator new` resolves to ours.
+8. **Owner field placement.** owner, key and pbase live in the head record only (plus owner-side copies of key, pbase and psize in line O). Non-head slices carry only `head_delta` and `kind`.
 
 ## 9. Known limitations (v0.1)
 
@@ -197,4 +200,4 @@ The fork-prepare handler takes them in exactly this order; the parent and child 
 - **Alignments above 64 KiB** use hugeblock-aligned runs up to 2 MiB, and solos (an mmap each) beyond that.
 - **No allocator override on macOS or Windows.** The `soham_*` API works there; Windows passes the stress suite under wine.
 - **The `rseq` per-CPU mode is not implemented** (plan P4).
-- **The fast paths are longer than mimalloc's**: about 41 instructions for malloc and 50 for free, against about 18 and 29. The difference is the security and safety work: link encoding with a bounds check, foreign-pointer detection through the granule map, and the busy byte for signal safety.
+- **The fast paths are longer than mimalloc's**: about 41 instructions for malloc and 50 for free, against about 18 and 29. The difference is the security and safety work: link encoding with a bounds check, foreign-pointer detection through the granule map, and the busy byte for signal safety. `soham_malloc` and `soham_free` are 64-byte aligned: on the test machine glibc-simple ran 2.6–2.9 s aligned and 4.1 s unaligned with identical code, depending only on what the linker placed before them.
