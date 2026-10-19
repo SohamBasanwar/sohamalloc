@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
-project(sohamalloc VERSION 0.1.0 LANGUAGES C CXX)
+project(sohamalloc VERSION 0.1.0 LANGUAGES C)
+if(NOT DEFINED SOHAM_CXX OR SOHAM_CXX)
+  enable_language(CXX)
+endif()
 
 option(SOHAM_DEBUG "Internal assertions" OFF)
 option(SOHAM_BUILD_TESTS "Add the tests/ directory if it has a CMakeLists.txt" ON)
+option(SOHAM_CXX "Include the C++ operator new/delete overrides (needs a C++ runtime)" ON)
 set(SOHAM_SANITIZE "" CACHE STRING "Sanitizer for the prefixed library: thread|address|undefined")
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -46,12 +50,16 @@ function(soham_common tgt)
 endfunction()
 
 # Override libraries: malloc family + C++ operators.
-add_library(sohamalloc SHARED ${SOHAM_SOURCES} src/sohamalloc_cxx.cpp)
+set(SOHAM_OVERRIDE_SOURCES ${SOHAM_SOURCES})
+if(SOHAM_CXX)
+  list(APPEND SOHAM_OVERRIDE_SOURCES src/sohamalloc_cxx.cpp)
+endif()
+add_library(sohamalloc SHARED ${SOHAM_OVERRIDE_SOURCES})
 soham_common(sohamalloc)
 target_compile_definitions(sohamalloc PRIVATE SOHAM_OVERRIDE=1)
 target_compile_options(sohamalloc PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -fvisibility=hidden>)
 
-add_library(sohamalloc_static STATIC ${SOHAM_SOURCES} src/sohamalloc_cxx.cpp)
+add_library(sohamalloc_static STATIC ${SOHAM_OVERRIDE_SOURCES})
 soham_common(sohamalloc_static)
 target_compile_definitions(sohamalloc_static PRIVATE SOHAM_OVERRIDE=1)
 set_target_properties(sohamalloc_static PROPERTIES OUTPUT_NAME sohamalloc)
