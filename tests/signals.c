@@ -180,8 +180,10 @@ static void block_test_signals(void)
 
 static void work(int id)
 {
-    hs.enabled = 1;
     hs.rng = tu_mix64(tu_seed_v + 1000 + (uint64_t)id) | 1;
+    atomic_signal_fence(memory_order_seq_cst);
+    hs.enabled = 1;
+    atomic_signal_fence(memory_order_seq_cst);
     /* Spin a little before the first allocation, so some handlers run on a
        thread that has not attached to the allocator yet. */
     double t0 = tu_now();
@@ -285,6 +287,16 @@ static void *signaller(void *arg)
     return NULL;
 }
 
+/* Flips stop_work after the planned duration.  Started with the test
+   signals blocked, so no handler runs on it. */
+static void *timer_main(void *arg)
+{
+    double secs = *(double *)arg, t0 = tu_now();
+    while (tu_now() - t0 < secs) tu_sleep_ms(20);
+    atomic_store(&stop_work, 1);
+    return NULL;
+}
+
 int main(int argc, char **argv)
 {
     tu_init("signals", argc, argv);
@@ -326,12 +338,46 @@ int main(int argc, char **argv)
     struct itimerval ip = { { 0, 500 }, { 0, 500 } };
     if (setitimer(ITIMER_PROF, &ip, NULL)) TU_FAIL("setitimer(ITIMER_PROF): errno %d", errno);
 
-    /* Main works too, for the planned duration. */
+    /* Main works too, for the planned duration.  A helper thread (test
+       signals blocked, never allocates) flips stop_work after `secs`. */
     double t0 = tu_now();
-    pthread_t timer_thr;
-    struct targ { double secs; } ta = { secs };
-    (void)ta;
-    /* A tiny helper flips stop_work after `secs`; main runs work(0) until then. */
-    timer_thr = tu_thread_start((void *(*)(void *))(void *)0, NULL), (void)timer_thr;
+    pthread_sigmask(SIG_BLOCK, &all, &old);
+    pthread_t timer_thr = tu_thread_start(timer_main, &secs);
+    pthread_sigmask(SIG_SETMASK, &old, NULL);
+    work(0);                           /* returns with the test signals blocked */
+
+    /* Teardown order matters: the signaller must stop before any worker is
+       joined (pthread_kill on a joined thread is undefined), and the timers
+       are disarmed before the handler is uninstalled. */
+    atomic_store(&stop_signaller, 1);
+    tu_thread_join(sg);
+    struct itimerval zero;
+    memset(&zero, 0, sizeof zero);
+    setitimer(ITIMER_REAL, &zero, NULL);
+    setitimer(ITIMER_PROF, &zero, NULL);
+    for (int i = 0; i < nworkers; i++) tu_thread_join(workers[i]);
+    tu_thread_join(timer_thr);
+    double dt = tu_now() - t0;
+    atomic_store(&tu_watchdog_stop, 1);
+    tu_thread_join(wd);
+
+    /* Exchange slots still hold blocks published by workers: verify them. */
+    for (int i = 0; i < XCH; i++) {
+        void *m = atomic_exchange(&xch[i], NULL);
+        if (m) check_and_free(m, "final exchange");
+    }
+
+    unsigned long calls = atomic_load(&h_calls), nested = atomic_load(&h_nested);
+    unsigned long allocs = atomic_load(&h_allocs), nulls = atomic_load(&h_null), frees = atomic_load(&h_frees);
+    tu_info("%.1f s: %lu worker ops, %lu handler calls (%lu nested), %lu handler allocs (%lu NULL), "
+            "%lu handler frees, %lu SIGUSR1 sent, %lu solo allocs, %lu cross-thread frees",
+            dt, atomic_load(&w_ops), calls, nested, allocs, nulls, frees, atomic_load(&sent),
+            atomic_load(&w_solo), atomic_load(&w_xfree));
+    if (calls < 100) TU_FAIL("only %lu signal handler invocations: the test did not test anything", calls);
+    if (allocs < 100) TU_FAIL("only %lu handler allocations", allocs);
+    if (nulls * 100 > allocs)
+        TU_FAIL("%lu of %lu handler allocations returned NULL/ENOMEM (> 1%%)", nulls, allocs);
+    if (nulls) tu_info("NOTE %lu handler allocations returned NULL with ENOMEM", nulls);
+    tu_info("PASS");
     return 0;
 }

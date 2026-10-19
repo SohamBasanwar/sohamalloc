@@ -179,12 +179,15 @@ case "$SANITIZE" in
 esac
 LINK_LIBS=""
 if [ -n "$LINK" ]; then
-    LINK_LIBS="-Wl,--whole-archive $LINK -Wl,--no-whole-archive -lstdc++"
+    # -rdynamic: the tests find soham_* with dlsym(RTLD_DEFAULT), which only
+    # sees the executable's symbols if they are in its dynamic symbol table.
+    LINK_LIBS="-rdynamic -Wl,--whole-archive $LINK -Wl,--no-whole-archive -lstdc++"
 fi
 
 # ---------------------------------------------------------------- test table
 # name | source | kind (c, cxx) | full timeout (s) | flags
-#   flags: soham  = needs sohamalloc (self-skips otherwise)
+#   flags: soham  = needs sohamalloc (self-skips otherwise; the regress/
+#                   reproducers do not, so the runner skips them)
 #          info   = informational unless the allocator is sohamalloc
 if [ "$PREFIXED" = 1 ]; then
     TABLE="
@@ -194,6 +197,7 @@ producer_consumer  prefixed/producer_consumer.c  c    600
 thread_churn       prefixed/thread_churn.c       c    600
 stats_api          prefixed/stats_api.c          c    180  soham
 internal_props     prefixed/internal_props.c     c    120  soham
+regress_check_heap regress/check_heap_concurrent.c c  120  soham
 "
 else
     TABLE="
@@ -210,6 +214,7 @@ cxx_test           cxx_test.cpp         cxx  400
 memory_return      memory_return.c      c    300  soham
 stats_api          stats_api.c          c    180  soham
 internal_props     internal_props.c     c    120  soham
+regress_signal_enomem regress/signal_reentrant_enomem.c c 60 soham
 "
 fi
 
@@ -269,6 +274,8 @@ export TSAN_OPTIONS="${TSAN_OPTIONS:-halt_on_error=1 exitcode=66 second_deadlock
 export ASAN_OPTIONS="${ASAN_OPTIONS:-halt_on_error=1 detect_leaks=1 abort_on_error=0 allocator_may_return_null=1}"
 export UBSAN_OPTIONS="${UBSAN_OPTIONS:-halt_on_error=1 print_stacktrace=1}"
 export TEST_IS_SOHAM="$SOHAM"
+# Tests that re-exec themselves (stats_api) only do so when no emulator runs them.
+if [ ${#RUNNER[@]} -eq 0 ]; then export TEST_NATIVE=1; else export TEST_NATIVE=0; fi
 export WINEDEBUG="${WINEDEBUG:--all}"
 
 npass=0; nfail=0; nskip=0; ninfo=0
@@ -291,6 +298,13 @@ for name in "${NAMES[@]}"; do
         nfail=$((nfail + 1))
         printf '%-20s %-14s %8s  %s\n' "$name" "$status" "-" "$detail"
         [ "$VERBOSE" = 1 ] && tail -30 "$OUT/$name.buildlog" | sed 's/^/    | /'
+        RESULTS+=("$name $status")
+        continue
+    fi
+    if [[ "${SRC[$name]}" == regress/* ]] && [[ " ${FLAGS[$name]} " == *" soham "* ]] && [ "$SOHAM" != 1 ]; then
+        status=SKIP; detail="sohamalloc regression reproducer (other allocators may deadlock)"
+        nskip=$((nskip + 1))
+        printf '%-20s %-14s %8s  %s\n' "$name" "$status" "-" "$detail"
         RESULTS+=("$name $status")
         continue
     fi

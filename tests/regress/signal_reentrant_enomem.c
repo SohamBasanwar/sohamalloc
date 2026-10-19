@@ -18,6 +18,10 @@
  * of NULL results (e.g. "7847 of 26190 handler mallocs returned NULL") and
  * exit 1.  Only meaningful for sohamalloc: glibc, jemalloc and tcmalloc
  * deadlock in this program (malloc is not async-signal-safe for them).
+ *
+ * Status: fixed in ae792ec (handler mallocs try the shared heap first).
+ * Kept as a regression test: run_tests.sh runs it as regress_signal_enomem
+ * when the allocator under test is sohamalloc.
  */
 #define _GNU_SOURCE 1
 #include <errno.h>

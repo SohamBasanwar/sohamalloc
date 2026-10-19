@@ -55,7 +55,7 @@ static void check_block(void *p, size_t n, const char *what)
     TU_CHECK(p != NULL, "%s(%zu) returned NULL", what, n);
     size_t u = T_USABLE(p);
     if (u < n) TU_FAIL("%s(%zu): malloc_usable_size = %zu < requested", what, n, u);
-    memset(p, 0xA5, u);
+    memset(tu_launder(p), 0xA5, u);
 }
 
 /* Which shared object provides symbol `name` in this process. */
@@ -111,7 +111,7 @@ static void test_malloc_zero(void)
         TU_CHECK(ps[i] != NULL, "malloc(0) #%d returned NULL", i);
         check_aligned(ps[i], tu_req_align(0), "malloc", 0);
         size_t u = malloc_usable_size(ps[i]);
-        if (u) memset(ps[i], 0x5A, u);
+        if (u) memset(tu_launder(ps[i]), 0x5A, u);
         int32_t c = tu_ranges_insert(&t, i, (uintptr_t)ps[i], u ? u : 1);
         if (c >= 0) TU_FAIL("malloc(0) #%d = %p overlaps/duplicates #%d = %p", i, ps[i], c, ps[c]);
     }
@@ -261,7 +261,11 @@ static void test_calloc(void)
             for (int k = 0; k < K; k++) {
                 d[k] = malloc(sizes[i]);
                 TU_CHECK(d[k], "malloc");
-                memset(d[k], 0xFF, malloc_usable_size(d[k]));
+                /* Dirty the whole usable range (calloc must zero the first
+                   n bytes even when it reuses this block).  Writing past the
+                   requested size through the malloc result itself is what
+                   _FORTIFY_SOURCE=3 rightly rejected: launder the pointer. */
+                memset(tu_launder(d[k]), 0xFF, malloc_usable_size(d[k]));
             }
             for (int k = 0; k < K; k++) free(d[k]);
             for (int k = 0; k < K; k++) {
@@ -456,7 +460,7 @@ static void test_usable_size(void)
         ring[slot] = p;
         ringu[slot] = u;
         ringseed[slot] = n * 31 + 7;
-        tu_fill(p, u, ringseed[slot]);
+        tu_fill(tu_launder(p), u, ringseed[slot]);
     }
     for (int i = 0; i < LIVE; i++) {
         if (!ring[i]) continue;
@@ -606,7 +610,7 @@ static void test_soham_extensions(void)
         TU_CHECK(p, "soham_malloc_at_least(%zu)", n);
         TU_CHECK(u >= n, "soham_malloc_at_least(%zu) usable %zu", n, u);
         TU_CHECK(u == malloc_usable_size(p), "at_least usable %zu != malloc_usable_size %zu", u, malloc_usable_size(p));
-        memset(p, 3, u);
+        memset(tu_launder(p), 3, u);
         free(p);
     }
 

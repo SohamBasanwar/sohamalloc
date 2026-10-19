@@ -20,6 +20,10 @@
  * Expected: "checks with errors: 0".  Observed (commit 9c944b4): with 1 thread
  * 0; with 4 threads 70-85 of 100 checks report errors (e.g. "= 10"); the final
  * check after all threads joined is 0.
+ *
+ * Status: fixed in ae792ec (records are validated only for the calling
+ * thread's own pages).  Kept as a regression test: run_tests.sh --prefixed
+ * runs it as regress_check_heap.
  */
 #include <pthread.h>
 #include <stdio.h>

@@ -91,6 +91,18 @@
 #define TU_LIKELY(x) __builtin_expect(!!(x), 1)
 #define TU_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
+/* Hide a pointer's provenance from the compiler.  _FORTIFY_SOURCE=3 (the
+   default for gcc on Ubuntu) tracks malloc(n)'s alloc_size through
+   __builtin_dynamic_object_size and aborts ("*** buffer overflow detected
+   ***") on a memset/memcpy longer than n -- even when the extra bytes are
+   within malloc_usable_size(p), which the contract makes writable.  Tests
+   that deliberately write the whole usable range go through this. */
+static inline void *tu_launder(void *p)
+{
+    __asm__ volatile("" : "+r"(p));
+    return p;
+}
+
 #define TU_EXIT_SKIP 77
 #define TU_EXIT_STALL 3
 
@@ -560,10 +572,19 @@ static TU_UNUSED void *tu_sym(const char *name)
 {
     return dlsym(RTLD_DEFAULT, name);
 }
-/* True when the process's malloc is sohamalloc (LD_PRELOAD'ed or linked). */
+/* True when the process's malloc is sohamalloc (LD_PRELOAD'ed or linked).
+   Cached: dlsym takes the dynamic linker's lock, so it must not run in a
+   signal handler (signals.c calls tu_req_align from handlers).  Call it once
+   from main before any handler is installed. */
+static _Atomic int tu_is_soham_cached = -1;
 static TU_UNUSED int tu_is_soham(void)
 {
-    return tu_sym("soham_version") != NULL;
+    int v = atomic_load_explicit(&tu_is_soham_cached, memory_order_relaxed);
+    if (v < 0) {
+        v = tu_sym("soham_version") != NULL;
+        atomic_store_explicit(&tu_is_soham_cached, v, memory_order_relaxed);
+    }
+    return v;
 }
 #endif
 
