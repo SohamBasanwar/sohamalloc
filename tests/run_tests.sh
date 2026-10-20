@@ -222,6 +222,8 @@ stats_api          stats_api.c          c    180  soham
 internal_props     internal_props.c     c    120  soham
 regress_signal_enomem regress/signal_reentrant_enomem.c c 60 soham
 regress_signal_attach regress/signal_thread_attach.c c 60 soham
+regress_signal_solo regress/signal_solo_realloc.c c 60 soham
+regress_invalid_frees regress/invalid_frees.c c 60 soham
 "
 fi
 

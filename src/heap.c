@@ -622,8 +622,35 @@ SOHAM_INLINE bool page_ready(rec_t *r) {
 }
 
 /* Allocation from bin c when cur is empty (busy held). */
+/* A page of h that has no allocated blocks and is on no list: keep it as
+ * a spare (small pages) or give it back to the page heap. */
+static void page_empty_release(heap_t *h, rec_t *rh) {
+  if (rh->r.kind == KIND_SMALL && h->nspares < (uint8_t)g_cfg.max_spares) {
+    atomic_store_explicit(&rh->r.owner, OWNER_SPARE, memory_order_relaxed);
+    h->spares[h->nspares++] = rh;
+    return;
+  }
+  page_release(rh);
+}
+
+/* Pages that became completely free through remote frees never see a local
+ * event.  Look at a few avail pages per refill and release the empty ones,
+ * so a consumer thread's frees reach the page heap while the owner lives. */
+static void bin_trim_avail(heap_t *h, bin_t *bin) {
+  rec_t *r = bin->avail;
+  for (int i = 0; i < 2 && r; i++) {
+    rec_t *nx = r->o.lnext;
+    collect(r);
+    if (o_cnt(r) == r->o.prov) { list_unlink(bin, r); page_empty_release(h, r); }
+    r = nx;
+  }
+}
+
 static SOHAM_NOINLINE void *bin_refill(heap_t *h, unsigned c) {
-  if (likely(!t_tls.trymode)) pending_drain();
+  if (likely(!t_tls.trymode)) {
+    pending_drain();
+    if (unlikely((++h->refills & 63) == 0)) ph_decay_tick();
+  }
   bin_t *bin = &h->bins[c];
   rec_t *r = bin->cur;
   if (r != &g_sentinel) {
@@ -638,7 +665,7 @@ static SOHAM_NOINLINE void *bin_refill(heap_t *h, unsigned c) {
   while (bin->avail) {
     rec_t *a = bin->avail;
     list_unlink(bin, a);
-    if (page_ready(a)) { bin->cur = a; return page_pop(a); }
+    if (page_ready(a)) { bin->cur = a; bin_trim_avail(h, bin); return page_pop(a); }
     if (!page_retire_full(bin, a)) { bin->cur = a; return page_pop(a); }
   }
   /* Shared pages, then a fresh page. */
@@ -669,12 +696,7 @@ static SOHAM_NOINLINE void page_local_event(heap_t *h, rec_t *rh, uint32_t cnt) 
    * (every provisioned block is on the local list). */
   list_unlink(bin, rh);
   SOHAM_ASSERT(xf_cnt(atomic_load_explicit(&rh->x.xfree, memory_order_relaxed)) == 0);
-  if (rh->r.kind == KIND_SMALL && h->nspares < (uint8_t)g_cfg.max_spares) {
-    atomic_store_explicit(&rh->r.owner, OWNER_SPARE, memory_order_relaxed);
-    h->spares[h->nspares++] = rh;
-    return;
-  }
-  page_release(rh);
+  page_empty_release(h, rh);
 }
 
 /* Detach every page of h (thread exit, collect). */

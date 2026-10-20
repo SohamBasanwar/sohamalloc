@@ -187,6 +187,7 @@ static bool geometry_init(void) {
   g_geo.meta_size = meta;
   g_geo.data_off = data_off;
   g_geo.nhb_max = (uint32_t)((W - data_off) / g_geo.H - 1);   /* last hugeblock: tail guard */
+  if (g_geo.nhb_max > WIN_HB_MAX) g_geo.nhb_max = WIN_HB_MAX;
   size_t gn = (size_t)1 << (va_bits - g_geo.wshift);
   void *gm = soham_os_map_rw((gn + B - 1) & ~(B - 1), B);
   if (!gm) return false;

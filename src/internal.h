@@ -250,6 +250,9 @@ struct hbmeta_s {
   uint16_t pad;
 };
 
+#define WIN_HB_MAX 2048u      /* hugeblocks per window: W / H <= 4 GiB / 2 MiB */
+#define WIN_BM_WORDS (WIN_HB_MAX / 64)
+
 struct window_s {
   uint64_t magic;
   uintptr_t base;
@@ -258,9 +261,15 @@ struct window_s {
   uint32_t nhb;         /* committed hugeblocks */
   uint32_t nhb_max;
   uint32_t index;
+  uint32_t nfree;       /* bits set in freebm */
+  /* Maintained by hb_rebucket, for large-run placement (ph_alloc_hbs):
+   * freebm: hugeblock wholly free; dirtybm: wholly free and resident. */
+  uint64_t freebm[WIN_BM_WORDS];
+  uint64_t dirtybm[WIN_BM_WORDS];
 };
 
 #define WINDOW_MAGIC 0x736f68616d77696eull   /* "sohamwin" */
+_Static_assert(sizeof(window_t) <= 4096, "window header must fit in one base page");
 
 /* ---------------------------------------------------------------------- */
 /* Locks: a 3-state futex mutex (Drepper), never allocating                */
@@ -294,7 +303,7 @@ struct heap_s {
   uint8_t live;            /* attached to a running thread */
   uint8_t is_shared;
   uint8_t nspares;
-  uint8_t pad0;
+  uint8_t refills;         /* wraps: a decay check every 64 refills */
   uint64_t rng;
   rec_t *spares[2];
   heap_t *pool_next;       /* heap pool (LIFO) */

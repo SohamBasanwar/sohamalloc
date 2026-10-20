@@ -168,6 +168,12 @@ static void bucket_remove(hbmeta_t *hb) {
 /* Recompute the longest allocatable run and move hb to its bucket.
  * Hugeblocks with nothing allocatable are on no list. */
 static void hb_rebucket(hbmeta_t *hb) {
+  window_t *w = hb->win;
+  uint64_t bit = (uint64_t)1 << (hb->idx & 63);
+  uint64_t *fw = &w->freebm[hb->idx >> 6], *dw = &w->dirtybm[hb->idx >> 6];
+  bool is_free = (hb->used | hb->releasing) == 0;
+  if (is_free != ((*fw & bit) != 0)) { *fw ^= bit; w->nfree += is_free ? 1u : (uint32_t)-1; }
+  if (is_free && hb->dirty == HB_FULL) *dw |= bit; else *dw &= ~bit;
   unsigned l = longest_run(hb_free_mask(hb));
   hb->longest = (uint8_t)l;
   if (hb->bucket == l) return;
@@ -315,6 +321,16 @@ static void hb_give(hbmeta_t *hb, unsigned s, unsigned k, uint64_t now) {
 enum { PURGE_DECAY = 0, PURGE_ALL = 1, PURGE_EXCESS = 2 };
 static void ph_purge(int mode);
 
+/* Decay check from the small-object slow path: freed pages are returned on
+ * schedule even while a program only allocates and frees small blocks.
+ * Racy reads (a stale value only shifts the check by one interval). */
+static SOHAM_NOINLINE SOHAM_RACY_SNAPSHOT bool ph_decay_due_racy(void) {
+  return g_ph.s_dirty != 0 && soham_os_now_ns() - g_ph.last_purge_ns >= g_cfg.purge_interval_ns;
+}
+static void ph_decay_tick(void) {
+  if (ph_decay_due_racy()) ph_purge(PURGE_DECAY);   /* re-checks under the lock */
+}
+
 /* Free resident memory the page heap may keep (§6 profiles):
  * max(dirty_min, used/dirty_div, recent swing), where the recent swing is
  * how far s_used fell below its peak of the last one or two decay epochs,
@@ -380,32 +396,45 @@ static uintptr_t ph_alloc_slices(unsigned k, bool *zero) {
   return a;
 }
 
+/* First index of a run of nh set bits in bm[0 .. nbits), or -1.  Word-wise:
+ * O(words + runs), not O(bits). */
+static int64_t bm_find_run(const uint64_t *bm, uint32_t nbits, uint32_t nh) {
+  uint32_t i = 0;
+  while (i < nbits) {
+    uint32_t wi = i >> 6;
+    uint64_t x = bm[wi] & (~(uint64_t)0 << (i & 63));
+    while (!x) { if (++wi * 64 >= nbits) return -1; x = bm[wi]; }
+    uint32_t start = wi * 64 + (uint32_t)__builtin_ctzll(x);
+    if (start >= nbits) return -1;
+    uint64_t y = ~bm[wi] & (~(uint64_t)0 << (start & 63));
+    uint32_t end;
+    for (;;) {
+      if (y) { end = wi * 64 + (uint32_t)__builtin_ctzll(y); break; }
+      if (++wi * 64 >= nbits) { end = nbits; break; }
+      y = ~bm[wi];
+    }
+    if (end > nbits) end = nbits;
+    if (end - start >= nh) return start;
+    i = end;
+  }
+  return -1;
+}
+
 /* Allocate k slices starting on a hugeblock boundary (k may exceed 32).
- * Among the runs of free hugeblocks long enough, take the one with the
- * most resident (dirty) slices: reusing them costs no page faults, and a
- * fully dirty run ends the scan. */
+ * Prefer a run of wholly resident free hugeblocks (reuse costs no page
+ * faults), else the lowest-addressed run of free ones.  Windows without nh
+ * free hugeblocks are skipped by count. */
 static uintptr_t ph_alloc_hbs(size_t k, bool *zero) {
   uint32_t nh = (uint32_t)((k + HB_SLICES - 1) / HB_SLICES);
   if (!lock_or_try(&g_ph.lock)) return 0;
   for (int attempt = 0; attempt < 2; attempt++) {
     window_t *bw = NULL;
     uint32_t bfirst = 0;
-    /* int64_t, not long: with a 32-bit long (ILP32, LLP64) "long * 32u" is
-     * unsigned and bscore = -1 would compare as the largest value. */
-    const int64_t perfect = (int64_t)nh * (int64_t)HB_SLICES;
-    int64_t bscore = -1;
-    for (window_t *w = g_ph.windows; w && bscore < perfect; w = w->next) {
-      uint32_t run = 0;
-      int64_t score = 0;
-      for (uint32_t i = 0; i < w->nhb; i++) {
-        hbmeta_t *hb = &w->hb[i];
-        if (hb->used != 0 || hb->releasing != 0) { run = 0; score = 0; continue; }
-        score += __builtin_popcount(hb->dirty);
-        if (++run > nh) score -= __builtin_popcount(w->hb[i - nh].dirty);
-        if (run >= nh && score > bscore) {
-          bw = w; bfirst = i + 1 - nh; bscore = score;
-          if (score == perfect) break;
-        }
+    for (int pass = 0; pass < 2 && !bw; pass++) {
+      for (window_t *w = g_ph.windows; w; w = w->next) {
+        if (w->nfree < nh) continue;
+        int64_t f = bm_find_run(pass == 0 ? w->dirtybm : w->freebm, w->nhb, nh);
+        if (f >= 0) { bw = w; bfirst = (uint32_t)f; break; }
       }
     }
     if (bw) {
