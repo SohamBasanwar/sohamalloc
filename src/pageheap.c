@@ -409,10 +409,15 @@ static uintptr_t ph_alloc_hbs(size_t k, bool *zero) {
       }
     }
     if (bw) {
+      /* Take exactly k slices: the last hugeblock's unused tail keeps its
+       * state (untouched or released memory is not counted as dirty). */
       bool z = true;
-      for (uint32_t j = bfirst; j < bfirst + nh; j++) z &= hb_take(&bw->hb[j], 0, HB_SLICES);
-      size_t tail = (size_t)nh * HB_SLICES - k;
-      if (tail) hb_give(&bw->hb[bfirst + nh - 1], (unsigned)(HB_SLICES - tail), (unsigned)tail, soham_os_now_ns());
+      size_t left = k;
+      for (uint32_t j = bfirst; j < bfirst + nh; j++) {
+        unsigned take = left < HB_SLICES ? (unsigned)left : HB_SLICES;
+        z &= hb_take(&bw->hb[j], 0, take);
+        left -= take;
+      }
       *zero = z;
       uintptr_t a = bw->base + g_geo.data_off + (uintptr_t)bfirst * g_geo.H;
       soham_unlock(&g_ph.lock);
@@ -423,6 +428,23 @@ static uintptr_t ph_alloc_hbs(size_t k, bool *zero) {
   }
   soham_unlock(&g_ph.lock);
   return 0;
+}
+
+/* Fork child: a release pass of another thread was cut off between its
+ * unlocked syscall and purge_finish.  Its ranges were possibly released:
+ * make them free, neither dirty nor known zero. */
+static void ph_fork_child(void) {
+  for (window_t *w = g_ph.windows; w; w = w->next) {
+    for (uint32_t i = 0; i < w->nhb; i++) {
+      hbmeta_t *hb = &w->hb[i];
+      if (!hb->releasing) continue;
+      unsigned cnt = (unsigned)__builtin_popcount(hb->releasing);
+      hb->releasing = 0;
+      g_ph.s_releasing -= cnt;
+      g_ph.s_lazy += cnt;
+      hb_rebucket(hb);
+    }
+  }
 }
 
 /* Return k slices starting at address a (may span hugeblocks). */

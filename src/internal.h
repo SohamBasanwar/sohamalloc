@@ -177,8 +177,8 @@ typedef struct {                 /* line O: written by the owning heap */
   uint32_t event_at;             /* local count at which a local free calls
                                     page_local_event: prov, or unfull_threshold
                                     on the full list */
-  uint32_t psize;                /* copy of r.psize */
-  uintptr_t bump;                /* next unprovisioned byte */
+  uint32_t bump_off;             /* bytes provisioned so far (prov * bsize) */
+  uint64_t divm;                 /* copy of r.divm */
   /* Owner-side copies of line R, so the owner's fast paths touch one line. */
   uintptr_t key;
   uintptr_t pbase;
@@ -196,6 +196,8 @@ typedef struct {                 /* line R: written only at page init */
   uint32_t nslices;              /* slices in the page */
   uint8_t cls, kind, zero, lflags; /* lflags: LF_*, owner-written on list moves */
   _Atomic(heap_t *) oheap;       /* owning heap (valid while owner is a tag) */
+  uint64_t divm;                 /* UINT64_MAX / bsize + 1: off is a multiple of
+                                    bsize iff off * divm < divm (off < 2^32) */
 } rec_r_t;
 
 typedef struct {                 /* line X: remote frees and pool links */
@@ -320,7 +322,7 @@ typedef struct {
   uint8_t state;
   uint8_t trymode;         /* handler context: every lock is a trylock (§5.3) */
   uint8_t pad;
-  void *deferred;          /* frees deferred from handler context */
+  _Atomic(void *) deferred; /* frees deferred from handler context */
 } soham_tls_t;
 
 /* ---------------------------------------------------------------------- */
@@ -381,6 +383,22 @@ SOHAM_INLINE uintptr_t link_enc(uintptr_t key, uintptr_t next, uintptr_t a) {
 }
 SOHAM_INLINE uintptr_t link_dec(uintptr_t key, uintptr_t stored, uintptr_t a) {
   return SOHAM_BSWAP(stored) ^ key ^ (a >> 12);
+}
+
+/* Owner-side exact block check: a is the start of a block provisioned in
+ * r's page.  Multiply instead of divide (Lemire et al., "Faster remainder by
+ * direct computation", 2019): valid for offsets below 2^32. */
+SOHAM_INLINE bool o_block(const rec_t *r, uintptr_t a) {
+  uintptr_t off = a - r->o.pbase;
+  return off < r->o.bump_off && (uint64_t)off * r->o.divm < r->o.divm;
+}
+
+/* A block about to be freed whose first word still decodes to a link into
+ * its own page (or to the list terminator) is probably already free.
+ * malloc clears that word, so a live block matches only by chance. */
+SOHAM_INLINE bool o_maybe_free(const rec_t *r, uintptr_t a) {
+  uintptr_t nx = link_dec(r->o.key, *(const uintptr_t *)a, a);
+  return nx == 0 || nx - r->o.pbase < r->o.bump_off;
 }
 
 SOHAM_INLINE uintptr_t o_head(const rec_t *r) { return atomic_load_explicit(&r->o.fhead, memory_order_relaxed); }

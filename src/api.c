@@ -260,13 +260,26 @@ SOHAM_INLINE void busy_leave(soham_tls_t *t) {
   atomic_store_explicit(&t->busy, t->heap ? 0 : BUSY_NOHEAP, memory_order_relaxed);
 }
 
+/* solo_usable with tls.busy held, or trylock only from a signal handler
+ * that interrupted the allocator (H2). */
+static size_t solo_usable_busy(uintptr_t a) {
+  soham_tls_t *t = &t_tls;
+  if (!busy_enter(t)) return solo_usable(a, true);
+  size_t us = solo_usable(a, false);
+  busy_leave(t);
+  return us;
+}
+
 static heap_t *heap_attach(void) {
   soham_tls_t *t = &t_tls;
   soham_lock(&g_heap_lock);
   heap_t *h = g_heap_pool;
   if (h) g_heap_pool = h->pool_next;
   else h = heap_create_locked();
-  if (h) { h->live = 1; h->pool_next = NULL; h->busy_ptr = &t->busy; g_heaps_live++; }
+  if (h) {
+    h->live = 1; h->pool_next = NULL; h->busy_ptr = &t->busy; g_heaps_live++;
+    atomic_store_explicit(&h->notify, NULL, memory_order_release);   /* reopen (heap_flush) */
+  }
   soham_unlock(&g_heap_lock);
   if (!h) return NULL;
   t->heap = h;
@@ -322,17 +335,17 @@ static void thread_exit_cb(void *v) {
 }
 
 /* Frees made by signal handlers that could not run in handler context. */
+/* Only this thread and its signal handlers touch the list, but a handler
+ * may run between any two instructions: take and push atomically. */
 static void deferred_push(soham_tls_t *t, void *p) {
-  *(void **)p = t->deferred;
-  signal_fence();
-  t->deferred = p;
+  void *old = atomic_load_explicit(&t->deferred, memory_order_relaxed);
+  do { *(void **)p = old; }
+  while (!atomic_compare_exchange_weak_explicit(&t->deferred, &old, p, memory_order_relaxed, memory_order_relaxed));
 }
 
 static void deferred_drain(soham_tls_t *t) {
-  while (t->deferred) {
-    void *l = t->deferred;
-    t->deferred = NULL;
-    signal_fence();
+  void *l;
+  while ((l = atomic_exchange_explicit(&t->deferred, NULL, memory_order_relaxed)) != NULL) {
     while (l) {
       void *nx = *(void **)l;
       soham_free(l);
@@ -386,7 +399,7 @@ static SOHAM_NOINLINE void *alloc_slow(size_t n, bool *zero) {
     if (!p) errno = ENOMEM;
     return p;
   }
-  if (unlikely(t->deferred != NULL)) deferred_drain(t);
+  if (unlikely(atomic_load_explicit(&t->deferred, memory_order_relaxed) != NULL)) deferred_drain(t);
   heap_t *h = t->heap;
   void *p;
   busy_enter(t);
@@ -422,7 +435,8 @@ SOHAM_INLINE void *malloc_fast(soham_tls_t *t, size_t n) {
     uintptr_t b = o_head(r);
     if (likely(b != 0)) {
       uintptr_t nx = link_dec(r->o.key, *(uintptr_t *)b, b);
-      if (unlikely(nx - r->o.pbase >= r->o.psize && nx != 0)) soham_fatal("heap corruption: free-list link overwritten", b);
+      if (unlikely(nx != 0 && !o_block(r, nx))) soham_fatal("heap corruption: free-list link overwritten", b);
+      *(uintptr_t *)b = 0;   /* see o_maybe_free */
       o_set(r, nx, o_cnt(r) - 1);
     }
     signal_fence();
@@ -500,26 +514,30 @@ static SOHAM_NOINLINE void free_slow(void *p) {
     busy_leave(t);
     return;
   }
-  if (g_geo.secure) {
-    if (unlikely(!block_ok(rh, a) || a >= rh->o.bump)) invalid_free(a, "free of an interior or invalid pointer");
-    if (rh->r.bsize <= 1024) memset((void *)a, 0, rh->r.bsize);
-  }
+  /* Exact block boundary (line R: stable while the page is allocated).
+   * Not provisioned yet (beyond bump) is caught on the owner path and by
+   * merge_chain for remote frees. */
+  if (unlikely(!block_ok(rh, a))) invalid_free(a, "free of an interior or invalid pointer");
+  bool zero_it = g_geo.secure && rh->r.bsize <= 1024;
   if (!in_handler) {
     busy_enter(t);
     heap_t *h = t->heap;
     if (h && atomic_load_explicit(&rh->r.owner, memory_order_relaxed) == t->tag) {
-      uintptr_t head = o_head(rh);
-      if (unlikely(head == a)) soham_fatal("double free detected", a);
-      *(uintptr_t *)a = link_enc(rh->o.key, head, a);
-      uint32_t cnt = o_cnt(rh) + 1;
-      o_set(rh, a, cnt);
-      if (cnt == rh->o.event_at) page_local_event(h, rh, cnt);
+      if (zero_it) {
+        /* Zero after the double-free checks, which read the first word. */
+        uintptr_t head = o_head(rh);
+        if (unlikely(!o_block(rh, a) || head == a || o_maybe_free(rh, a))) owned_free_check(rh, a);
+        memset((void *)a, 0, rh->r.bsize);
+      }
+      owned_free(h, rh, a);
     } else {
+      if (zero_it) memset((void *)a, 0, rh->r.bsize);
       remote_free(rh, a, false);
     }
     busy_leave(t);
   } else {
     /* Handler context: the lock-free remote path is always safe (§5.3). */
+    if (zero_it) memset((void *)a, 0, rh->r.bsize);
     remote_free(rh, a, true);
   }
 }
@@ -540,12 +558,7 @@ SOHAM_API SOHAM_HOT void soham_free(void *p) {
     rec_t *rh = r;
     if (unlikely(hd != 0)) { rh = (rec_t *)((char *)r - hd); own = atomic_load_explicit(&rh->r.owner, memory_order_relaxed); }
     if (likely(own == t->tag)) {
-      uintptr_t head = o_head(rh);
-      if (unlikely(head == a)) soham_fatal("double free detected", a);
-      *(uintptr_t *)a = link_enc(rh->o.key, head, a);
-      uint32_t cnt = o_cnt(rh) + 1;
-      o_set(rh, a, cnt);
-      if (unlikely(cnt == rh->o.event_at)) page_local_event(t->heap, rh, cnt);
+      owned_free(t->heap, rh, a);
       signal_fence();
       atomic_store_explicit(&t->busy, 0, memory_order_relaxed);
       return;
@@ -572,7 +585,8 @@ SOHAM_API size_t soham_usable_size(const void *p) {
   }
   if (in_bss_arena(a)) return bss_usable(a);
   if (atomic_load_explicit(&g_init_state, memory_order_acquire) != 2) return 0;
-  return solo_usable(a);
+  size_t us = solo_usable_busy(a);
+  return us == SOLO_UNKNOWN ? 0 : us;
 }
 
 SOHAM_API void *soham_realloc(void *p, size_t n) {
@@ -590,14 +604,18 @@ SOHAM_API void *soham_realloc(void *p, size_t n) {
   } else if (in_bss_arena(a)) {
     us = bss_usable(a);
   } else {
-    us = atomic_load_explicit(&g_init_state, memory_order_acquire) == 2 ? solo_usable(a) : 0;
+    us = atomic_load_explicit(&g_init_state, memory_order_acquire) == 2 ? solo_usable_busy(a) : 0;
+    if (us == SOLO_UNKNOWN) { errno = ENOMEM; return NULL; }   /* handler, table busy */
     if (us == 0) {
       if (g_geo.secure) invalid_free(a, "realloc of a pointer not allocated by sohamalloc");
       return NULL;
     }
     if (n >= SOHAM_SOLO_MIN && n <= (size_t)PTRDIFF_MAX && !(atomic_load_explicit(&t_tls.busy, memory_order_relaxed) & BUSY_IN)) {
       if (n <= us && n >= us / 2) return p;
+      soham_tls_t *t = &t_tls;
+      busy_enter(t);
       void *q = solo_realloc(a, n);
+      busy_leave(t);
       if (q) return q;
     }
   }
@@ -641,7 +659,7 @@ static void *alloc_aligned(size_t align, size_t n) {
   }
   bool zero;
   void *p = NULL;
-  if (t->deferred) deferred_drain(t);
+  if (atomic_load_explicit(&t->deferred, memory_order_relaxed)) deferred_drain(t);
   busy_enter(t);
   if (align <= g_geo.H && n < SOHAM_SOLO_MIN) p = run_alloc(n, align > g_geo.S, &zero);
   else p = solo_alloc(n, align);
@@ -695,10 +713,13 @@ SOHAM_API void soham_collect(int force) {
   if (atomic_load_explicit(&g_init_state, memory_order_acquire) != 2) return;
   soham_tls_t *t = &t_tls;
   if (atomic_load_explicit(&t->busy, memory_order_relaxed) & BUSY_IN) return;
-  if (t->deferred) deferred_drain(t);
+  if (atomic_load_explicit(&t->deferred, memory_order_relaxed)) deferred_drain(t);
   busy_enter(t);
   pending_drain();
-  if (force && t->heap) heap_flush(t->heap);
+  if (force && t->heap) {
+    heap_flush(t->heap);
+    atomic_store_explicit(&t->heap->notify, NULL, memory_order_release);   /* still attached */
+  }
   ph_purge(force ? PURGE_ALL : PURGE_DECAY);
   busy_leave(t);
 }
@@ -730,7 +751,7 @@ static SOHAM_RACY_SNAPSHOT void walk_pages(walk_t *wk) {
         else freeb = o_cnt(r) + xf_cnt(x) + (cap - r->o.prov);
         if (freeb > cap) freeb = cap;
         wk->in_use += (size_t)(cap - freeb) * bs;
-        if (owner >= 1 && owner <= SOHAM_MAX_TAG) wk->cached_heaps += (size_t)freeb * bs;
+        if ((owner >= 1 && owner <= SOHAM_MAX_TAG) || owner == OWNER_SPARE) wk->cached_heaps += (size_t)freeb * bs;
         else wk->cached_pools += (size_t)freeb * bs;
         wk->tail_waste += r->r.psize - (size_t)cap * bs;
       }
@@ -833,7 +854,7 @@ SOHAM_API int soham_check_heap(void) {
         uint32_t n = o_cnt(r), k = 0;
         uintptr_t p = o_head(r);
         while (p && k <= n) {
-          if (!block_ok(r, p) || p >= r->o.bump) { errors++; break; }
+          if (!o_block(r, p)) { errors++; break; }
           p = link_dec(r->r.key, *(uintptr_t *)p, p);
           k++;
         }
@@ -886,6 +907,7 @@ static void fork_child(void) {
   for (unsigned c = 0; c < SOHAM_NCLASSES; c++) soham_lock_reset(&g_pools[c].lock);
   soham_lock_reset(&g_shared_lock);
   soham_lock_reset(&g_heap_lock);
+  ph_fork_child();
   /* Other threads do not exist in the child.  Their heaps go to the pool
    * as-is (no page metadata is touched: copy-on-write friendly); a heap
    * that was inside an operation is leaked (§8). */
@@ -996,7 +1018,7 @@ static struct soham_mallinfo2 soham_mallinfo2_impl(void) {
   soham_get_stats(&s);
   struct soham_mallinfo2 m = { 0 };
   m.arena = s.committed - s.solo;
-  m.hblks = 0;
+  m.hblks = g_solo_n;
   m.hblkhd = s.solo;
   m.uordblks = s.in_use;
   m.fordblks = s.cached_heaps + s.cached_pools + s.pageheap_free;
@@ -1032,103 +1054,11 @@ SOHAM_API struct soham_mallinfo mallinfo(void) {
  * these frames.  Without a runtime (impossible in a real C++ program) an
  * allocation failure in throwing new aborts with a diagnostic. */
 #if SOHAM_CXX_OPERATORS
-#include <dlfcn.h>
-
-#if SIZE_MAX > 0xffffffffu
-#  define SOHAM_SZ "m"     /* size_t is unsigned long */
-#else
-#  define SOHAM_SZ "j"     /* size_t is unsigned int */
-#endif
-
-typedef void (*soham_new_handler_t)(void);
-extern soham_new_handler_t _ZSt15get_new_handlerv(void) __attribute__((weak));
-extern void _ZSt17__throw_bad_allocv(void) __attribute__((weak, noreturn));
-
-static SOHAM_NOINLINE void *cxx_new_retry(size_t n, size_t align) {
-  for (;;) {
-    void *p = align ? soham_aligned_alloc(align, n ? n : 1) : soham_malloc(n);
-    if (p) return p;
-    soham_new_handler_t h = _ZSt15get_new_handlerv ? _ZSt15get_new_handlerv() : NULL;
-    if (!h) {
-      if (_ZSt17__throw_bad_allocv) _ZSt17__throw_bad_allocv();
-      soham_fatal("out of memory in operator new (no C++ runtime to throw std::bad_alloc)", (uintptr_t)n);
-    }
-    h();   /* may throw: the C frames have unwind tables */
-  }
-}
-
-/* nothrow new must return NULL if the new_handler throws, which needs a
-   catch that C cannot write. The C++ runtime's own nothrow new is exactly
-   "try { return ::operator new(n); } catch (...) { return nullptr; }", and
-   its ::operator new resolves to ours, so on failure with a handler
-   installed we delegate to it (found once with RTLD_NEXT). Without a
-   handler, or without a runtime definition, plain NULL is correct. */
-typedef void *(*nt_new_fn)(size_t, const void *);
-typedef void *(*nt_new_al_fn)(size_t, size_t, const void *);
-static _Atomic(void *) g_nt_next[4];
-static const char *const g_nt_names[4] = {
-  "_Znw" SOHAM_SZ "RKSt9nothrow_t", "_Zna" SOHAM_SZ "RKSt9nothrow_t",
-  "_Znw" SOHAM_SZ "St11align_val_tRKSt9nothrow_t", "_Zna" SOHAM_SZ "St11align_val_tRKSt9nothrow_t" };
-
-static SOHAM_NOINLINE void *cxx_new_nothrow_slow(int which, size_t n, size_t al, const void *nt) {
-  if (!_ZSt15get_new_handlerv || !_ZSt15get_new_handlerv()) return NULL;
-  void *f = atomic_load_explicit(&g_nt_next[which], memory_order_acquire);
-  if (!f) {
-    f = dlsym(RTLD_NEXT, g_nt_names[which]);
-    if (!f) return NULL;
-    atomic_store_explicit(&g_nt_next[which], f, memory_order_release);
-  }
-  return which < 2 ? ((nt_new_fn)f)(n, nt) : ((nt_new_al_fn)f)(n, al, nt);
-}
-
-static SOHAM_NOINLINE void *cxx_new_slow(size_t n) {
-  void *p = malloc_slow(n);
-  return likely(p != NULL) ? p : cxx_new_retry(n, 0);
-}
-
-/* The malloc fast path inlined, so new costs no more than malloc. */
-SOHAM_INLINE void *cxx_new(size_t n) {
-  void *p = malloc_fast(&t_tls, n);
-  return likely(p != NULL) ? p : cxx_new_slow(n);
-}
-SOHAM_INLINE void *cxx_new_aligned(size_t n, size_t al) {
-  void *p = soham_aligned_alloc(al, n ? n : 1);
-  return likely(p != NULL) ? p : cxx_new_retry(n, al);
-}
-
-#define SOHAM_CXX(ret, name, mangled, params) \
-  SOHAM_API ret name params __asm__(mangled); SOHAM_API ret name params
-
-SOHAM_CXX(SOHAM_HOT void *, soham_op_new, "_Znw" SOHAM_SZ, (size_t n)) { return cxx_new(n); }
-SOHAM_CXX(SOHAM_HOT void *, soham_op_new_a, "_Zna" SOHAM_SZ, (size_t n)) { return cxx_new(n); }
-SOHAM_CXX(void *, soham_op_new_nt, "_Znw" SOHAM_SZ "RKSt9nothrow_t", (size_t n, const void *nt)) {
-  void *p = soham_malloc(n); return p ? p : cxx_new_nothrow_slow(0, n, 0, nt);
-}
-SOHAM_CXX(void *, soham_op_new_a_nt, "_Zna" SOHAM_SZ "RKSt9nothrow_t", (size_t n, const void *nt)) {
-  void *p = soham_malloc(n); return p ? p : cxx_new_nothrow_slow(1, n, 0, nt);
-}
-SOHAM_CXX(void *, soham_op_new_al, "_Znw" SOHAM_SZ "St11align_val_t", (size_t n, size_t al)) { return cxx_new_aligned(n, al); }
-SOHAM_CXX(void *, soham_op_new_a_al, "_Zna" SOHAM_SZ "St11align_val_t", (size_t n, size_t al)) { return cxx_new_aligned(n, al); }
-SOHAM_CXX(void *, soham_op_new_al_nt, "_Znw" SOHAM_SZ "St11align_val_tRKSt9nothrow_t", (size_t n, size_t al, const void *nt)) {
-  void *p = soham_aligned_alloc(al, n ? n : 1); return p ? p : cxx_new_nothrow_slow(2, n, al, nt);
-}
-SOHAM_CXX(void *, soham_op_new_a_al_nt, "_Zna" SOHAM_SZ "St11align_val_tRKSt9nothrow_t", (size_t n, size_t al, const void *nt)) {
-  void *p = soham_aligned_alloc(al, n ? n : 1); return p ? p : cxx_new_nothrow_slow(3, n, al, nt);
-}
-
-SOHAM_CXX(void, soham_op_del, "_ZdlPv", (void *p)) { soham_free(p); }
-SOHAM_CXX(void, soham_op_del_a, "_ZdaPv", (void *p)) { soham_free(p); }
-SOHAM_CXX(void, soham_op_del_nt, "_ZdlPvRKSt9nothrow_t", (void *p, const void *nt)) { (void)nt; soham_free(p); }
-SOHAM_CXX(void, soham_op_del_a_nt, "_ZdaPvRKSt9nothrow_t", (void *p, const void *nt)) { (void)nt; soham_free(p); }
-SOHAM_CXX(void, soham_op_del_sz, "_ZdlPv" SOHAM_SZ, (void *p, size_t n)) { soham_free_sized(p, n); }
-SOHAM_CXX(void, soham_op_del_a_sz, "_ZdaPv" SOHAM_SZ, (void *p, size_t n)) { soham_free_sized(p, n); }
-SOHAM_CXX(void, soham_op_del_al, "_ZdlPvSt11align_val_t", (void *p, size_t al)) { (void)al; soham_free(p); }
-SOHAM_CXX(void, soham_op_del_a_al, "_ZdaPvSt11align_val_t", (void *p, size_t al)) { (void)al; soham_free(p); }
-SOHAM_CXX(void, soham_op_del_al_nt, "_ZdlPvSt11align_val_tRKSt9nothrow_t", (void *p, size_t al, const void *nt)) { (void)al; (void)nt; soham_free(p); }
-SOHAM_CXX(void, soham_op_del_a_al_nt, "_ZdaPvSt11align_val_tRKSt9nothrow_t", (void *p, size_t al, const void *nt)) { (void)al; (void)nt; soham_free(p); }
-SOHAM_CXX(void, soham_op_del_sz_al, "_ZdlPv" SOHAM_SZ "St11align_val_t", (void *p, size_t n, size_t al)) { soham_free_aligned_sized(p, al, n); }
-SOHAM_CXX(void, soham_op_del_a_sz_al, "_ZdaPv" SOHAM_SZ "St11align_val_t", (void *p, size_t n, size_t al)) { soham_free_aligned_sized(p, al, n); }
-
+#define SOHAM_CXX_RT_REF __attribute__((weak))
+#define CXX_MALLOC_FAST(n) malloc_fast(&t_tls, (n))
+#define CXX_MALLOC_SLOW(n) malloc_slow(n)
+#define CXX_FATAL(msg, n) soham_fatal(msg, (uintptr_t)(n))
+#include "cxx_ops.inc"
 #endif /* SOHAM_CXX_OPERATORS */
 
 #endif /* SOHAM_OVERRIDE */

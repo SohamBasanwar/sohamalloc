@@ -106,7 +106,53 @@ static uint64_t heap_rand(heap_t *h) {
 /* Exact block-boundary check (S1, chain walks). */
 SOHAM_INLINE bool block_ok(const rec_t *rh, uintptr_t a) {
   uintptr_t off = a - rh->r.pbase;
-  return off < (uintptr_t)rh->r.cap * rh->r.bsize && (off % rh->r.bsize) == 0;
+  return off < (uintptr_t)rh->r.cap * rh->r.bsize && (uint64_t)off * rh->r.divm < rh->r.divm;
+}
+
+/* An owned block failed the fast free checks (o_block, head, o_maybe_free):
+ * abort on an invalid or double free, return for a false alarm.  The owner
+ * holds the page, so its local list is stable; the remote chain is
+ * push-only for other threads, so the nodes below a snapshot of its head
+ * are stable too. */
+static SOHAM_NOINLINE SOHAM_COLD void owned_free_check(rec_t *rh, uintptr_t a) {
+  if (!o_block(rh, a)) soham_fatal("free of an interior or invalid pointer", a);
+  uintptr_t key = rh->o.key;
+  uintptr_t p = o_head(rh);
+  for (uint32_t n = o_cnt(rh); p != 0 && n > 0; n--) {
+    if (p == a) soham_fatal("double free detected", a);
+    if (!o_block(rh, p)) soham_fatal("heap corruption: free-list link overwritten", p);
+    p = link_dec(key, *(uintptr_t *)p, p);
+  }
+  uint64_t x = atomic_load_explicit(&rh->x.xfree, memory_order_acquire);
+  p = xf_ptr(x);
+  for (uint32_t n = xf_cnt(x); p != 0 && n > 0; n--) {
+    if (p == a) soham_fatal("double free detected (block is on the remote free list)", a);
+    if (!o_block(rh, p)) break;
+    p = link_dec(key, *(uintptr_t *)p, p);
+  }
+}
+
+static void page_local_event(heap_t *h, rec_t *rh, uint32_t cnt);
+
+SOHAM_INLINE void owned_free_commit(heap_t *h, rec_t *rh, uintptr_t a, uintptr_t head) {
+  *(uintptr_t *)a = link_enc(rh->o.key, head, a);
+  uint32_t cnt = o_cnt(rh) + 1;
+  o_set(rh, a, cnt);
+  if (unlikely(cnt == rh->o.event_at)) page_local_event(h, rh, cnt);
+}
+
+/* The rare path finishes the whole free itself, so the fast path keeps
+ * nothing live across it (no callee-saved spills on every free). */
+static SOHAM_NOINLINE SOHAM_COLD void owned_free_checked(heap_t *h, rec_t *rh, uintptr_t a) {
+  owned_free_check(rh, a);
+  owned_free_commit(h, rh, a, o_head(rh));
+}
+
+/* Owner free of block a in page rh (busy held, rh owned by the caller). */
+SOHAM_INLINE void owned_free(heap_t *h, rec_t *rh, uintptr_t a) {
+  uintptr_t head = o_head(rh);
+  if (unlikely(!o_block(rh, a) || head == a || o_maybe_free(rh, a))) { owned_free_checked(h, rh, a); return; }
+  owned_free_commit(h, rh, a, head);
 }
 
 static void page_init(heap_t *h, rec_t *r, unsigned c, uintptr_t base, uint32_t nslices, uint32_t owner) {
@@ -123,14 +169,15 @@ static void page_init(heap_t *h, rec_t *r, unsigned c, uintptr_t base, uint32_t 
   r->r.psize = nslices << SOHAM_SLICE_SHIFT;
   r->r.nslices = nslices;
   r->r.pbase = base;
+  r->r.divm = UINT64_MAX / r->r.bsize + 1;
   r->r.key = (uintptr_t)heap_rand(h);
   atomic_store_explicit(&r->r.oheap, h, memory_order_relaxed);
   r->o.key = r->r.key;
   r->o.pbase = base;
-  r->o.psize = r->r.psize;
+  r->o.divm = r->r.divm;
   r->o.prov = 0;
   r->o.event_at = 0;
-  r->o.bump = base;
+  r->o.bump_off = 0;
   r->r.lflags = 0;
   r->o.lnext = r->o.lprev = NULL;
   o_set(r, 0, 0);
@@ -165,7 +212,7 @@ static void provision(rec_t *r) {
   if (n < 2) n = 2;
   if (n > avail) n = avail;
   if (n == 0) return;
-  uintptr_t b = r->o.bump;
+  uintptr_t b = r->o.pbase + r->o.bump_off;
   uintptr_t head = o_head(r);
   uint32_t lcnt = o_cnt(r);
   uintptr_t key = r->r.key;
@@ -198,7 +245,7 @@ static void provision(rec_t *r) {
   }
   r->o.prov += n;
   if (r->r.lflags != LF_FULL) r->o.event_at = r->o.prov;
-  r->o.bump = b + (uintptr_t)n * bs;
+  r->o.bump_off += n * bs;
   o_set(r, head, lcnt + n);
 }
 
@@ -210,7 +257,7 @@ static void merge_chain(rec_t *r, uintptr_t head, uint32_t n) {
   uintptr_t key = r->r.key;
   uintptr_t p = head;
   for (uint32_t i = 1;; i++) {
-    if (unlikely(!block_ok(r, p) || p >= r->o.bump)) soham_fatal("corrupt remote free chain", p);
+    if (unlikely(!o_block(r, p))) soham_fatal("corrupt remote free chain", p);
     uintptr_t nx = link_dec(key, *(uintptr_t *)p, p);
     if (i == n) {
       if (unlikely(nx != 0)) soham_fatal("corrupt remote free chain (length)", p);
@@ -246,7 +293,8 @@ SOHAM_INLINE void *page_pop(rec_t *r) {
   uintptr_t b = o_head(r);
   if (!b) return NULL;
   uintptr_t nx = link_dec(r->o.key, *(uintptr_t *)b, b);
-  if (unlikely(nx != 0 && nx - r->o.pbase >= r->o.psize)) soham_fatal("heap corruption: free-list link overwritten", b);
+  if (unlikely(nx != 0 && !o_block(r, nx))) soham_fatal("heap corruption: free-list link overwritten", b);
+  *(uintptr_t *)b = 0;   /* see o_maybe_free */
   o_set(r, nx, o_cnt(r) - 1);
   return (void *)b;
 }
@@ -310,10 +358,22 @@ static void pool_unlink(pool_t *pl, rec_t *r) {
 
 /* Called by the thread whose CAS set PENDING (plan §5.4 resolve). */
 static void resolve(rec_t *r) {
-  pool_t *pl = &g_pools[r->r.cls];
-  bool give_back = false;
-  soham_lock(&pl->lock);
+  /* The class is valid only while PENDING is set: a stale pending-stack
+   * entry may name a page that was released and reused (even as a run, whose
+   * cls is 0xff).  Check PENDING first, and again under the class's lock. */
   uint64_t x = atomic_load_explicit(&r->x.xfree, memory_order_acquire);
+  pool_t *pl;
+  for (;;) {
+    if (!(x & XF_PENDING)) return;
+    unsigned c = r->r.cls;
+    if (c >= SOHAM_NCLASSES) return;
+    pl = &g_pools[c];
+    soham_lock(&pl->lock);
+    x = atomic_load_explicit(&r->x.xfree, memory_order_acquire);
+    if (r->r.cls == c) break;
+    soham_unlock(&pl->lock);
+  }
+  bool give_back = false;
   for (;;) {
     if (!(x & XF_PENDING)) break;          /* a claimer took the page */
     uint32_t cnt = xf_cnt(x), cap = r->r.cap;
@@ -367,22 +427,35 @@ static void pending_drain(void) {
  * (also used from signal handlers).  nstate keeps the page on at most one
  * stack; a stale entry (page detached or reused since) is ignored by the
  * drain, which re-validates ownership and list membership. */
+/* heap_flush closes h's stack (thread exit, collect) until the heap is
+ * attached again.  A push that finds it closed leaves nstate clear: the
+ * page is being detached, and an entry left on a stack nobody drains would
+ * keep nstate set and silence every later owner's notifications. */
+#define NOTIFY_CLOSED ((rec_t *)(uintptr_t)1)
+
 static void notify_push(heap_t *h, rec_t *r) {
+  if (atomic_load_explicit(&r->r.owner, memory_order_relaxed) != h->tag) return;   /* moved on */
   uint32_t z = 0;
-  if (!atomic_compare_exchange_strong_explicit(&r->x.nstate, &z, 1, memory_order_acq_rel, memory_order_relaxed)) return;
+  if (!atomic_compare_exchange_strong_explicit(&r->x.nstate, &z, 1, memory_order_seq_cst, memory_order_relaxed)) return;
   rec_t *old = atomic_load_explicit(&h->notify, memory_order_relaxed);
-  do { r->x.nnext = old; }
-  while (!atomic_compare_exchange_weak_explicit(&h->notify, &old, r, memory_order_release, memory_order_relaxed));
+  do {
+    if (old == NOTIFY_CLOSED) { atomic_store_explicit(&r->x.nstate, 0, memory_order_release); return; }
+    r->x.nnext = old;
+  } while (!atomic_compare_exchange_weak_explicit(&h->notify, &old, r, memory_order_release, memory_order_relaxed));
 }
 
 /* Owner: move notified full pages back to the avail list. */
 static void notify_drain(heap_t *h) {
-  if (!atomic_load_explicit(&h->notify, memory_order_relaxed)) return;
+  rec_t *top = atomic_load_explicit(&h->notify, memory_order_relaxed);
+  if (!top || top == NOTIFY_CLOSED) return;
   rec_t *r = atomic_exchange_explicit(&h->notify, NULL, memory_order_acquire);
   while (r) {
     rec_t *nx = r->x.nnext;
     r->x.nnext = NULL;
     atomic_store_explicit(&r->x.nstate, 0, memory_order_release);
+    /* Store-buffering: either we see the freer's WATCH clear below, or its
+     * nstate CAS (seq_cst, after its xfree CAS) sees our 0 and pushes again. */
+    atomic_thread_fence(memory_order_seq_cst);
     if (atomic_load_explicit(&r->r.owner, memory_order_relaxed) == h->tag && r->r.lflags == LF_FULL &&
         !(atomic_load_explicit(&r->x.xfree, memory_order_relaxed) & XF_WATCH)) {
       bin_t *bin = &h->bins[r->r.cls];
@@ -441,6 +514,7 @@ static void remote_free(rec_t *rh, uintptr_t a, bool in_handler) {
         /* The CAS acquired the owner's WATCH publication, so oheap is the
          * heap that owns the page now (or owned it until a later detach). */
         heap_t *oh = atomic_load_explicit(&rh->r.oheap, memory_order_relaxed);
+        atomic_thread_fence(memory_order_seq_cst);   /* pairs with notify_drain */
         if (oh) notify_push(oh, rh);
       }
       if (responsible) {
@@ -605,8 +679,10 @@ static SOHAM_NOINLINE void page_local_event(heap_t *h, rec_t *rh, uint32_t cnt) 
 
 /* Detach every page of h (thread exit, collect). */
 static void heap_flush(heap_t *h) {
-  /* Stale notify entries only: the drain below ignores pages we detach. */
-  rec_t *n = atomic_exchange_explicit(&h->notify, NULL, memory_order_acquire);
+  /* Close the stack (see NOTIFY_CLOSED) and clear what is on it: only
+   * pages we are about to detach. */
+  rec_t *n = atomic_exchange_explicit(&h->notify, NOTIFY_CLOSED, memory_order_acquire);
+  if (n == NOTIFY_CLOSED) n = NULL;
   while (n) {
     rec_t *nx = n->x.nnext;
     n->x.nnext = NULL;
@@ -728,9 +804,13 @@ static void *solo_alloc(size_t n, size_t align) {
   return p;
 }
 
-/* 0 when p is not a solo. */
-static size_t solo_usable(uintptr_t p) {
-  soham_lock(&g_solo_lock);
+/* 0 when p is not a solo; SOLO_UNKNOWN when try_only and the table is
+ * locked (the caller is a signal handler that may have interrupted the
+ * lock holder). */
+#define SOLO_UNKNOWN SIZE_MAX
+static size_t solo_usable(uintptr_t p, bool try_only) {
+  if (try_only) { if (!soham_trylock(&g_solo_lock)) return SOLO_UNKNOWN; }
+  else soham_lock(&g_solo_lock);
   size_t i = solo_find_locked(p);
   size_t len = i == SIZE_MAX ? 0 : g_solo_tab[i].len;
   soham_unlock(&g_solo_lock);
@@ -754,17 +834,22 @@ static void *solo_realloc(uintptr_t p, size_t n) {
   size_t B = g_geo.B;
   if (n > (size_t)PTRDIFF_MAX - B) return NULL;
   size_t nlen = (n + B - 1) & ~(B - 1);
+  /* Take the entry out, remap unlocked (no syscall under a lock), put the
+   * result back.  Removing and reinserting one entry never grows the table.
+   * Meanwhile p is unknown to the table: only a racing free of the block
+   * being reallocated, a program bug, can notice. */
   soham_lock(&g_solo_lock);
   size_t i = solo_find_locked(p);
   if (i == SIZE_MAX) { soham_unlock(&g_solo_lock); return NULL; }
   size_t olen = g_solo_tab[i].len;
+  solo_remove_at_locked(i);
+  soham_unlock(&g_solo_lock);
   void *q = soham_os_remap((void *)p, olen, nlen);
-  if (q) {
-    solo_remove_at_locked(i);
-    solo_insert_raw(g_solo_tab, g_solo_cap, (uintptr_t)q, nlen);
-    g_solo_n++;
-    g_solo_bytes += nlen - olen;
-  }
+  soham_lock(&g_solo_lock);
+  if (q) solo_insert_raw(g_solo_tab, g_solo_cap, (uintptr_t)q, nlen);
+  else solo_insert_raw(g_solo_tab, g_solo_cap, p, olen);
+  g_solo_n++;
+  if (q) g_solo_bytes += nlen - olen;
   soham_unlock(&g_solo_lock);
   return q;
 }

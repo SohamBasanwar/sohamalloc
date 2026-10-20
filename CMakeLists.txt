@@ -58,9 +58,15 @@ add_library(sohamalloc SHARED ${SOHAM_OVERRIDE_SOURCES})
 soham_common(sohamalloc)
 target_compile_definitions(sohamalloc PRIVATE SOHAM_OVERRIDE=1 ${SOHAM_CXX_DEF})
 
-add_library(sohamalloc_static STATIC ${SOHAM_OVERRIDE_SOURCES})
+# Static archive: the C++ operators are a separate member (src/cxx_ops.c),
+# pulled only into programs that use them; see src/cxx_ops.inc.
+set(SOHAM_STATIC_SOURCES ${SOHAM_OVERRIDE_SOURCES})
+if(SOHAM_CXX AND NOT WIN32)
+  list(APPEND SOHAM_STATIC_SOURCES src/cxx_ops.c)
+endif()
+add_library(sohamalloc_static STATIC ${SOHAM_STATIC_SOURCES})
 soham_common(sohamalloc_static)
-target_compile_definitions(sohamalloc_static PRIVATE SOHAM_OVERRIDE=1 ${SOHAM_CXX_DEF})
+target_compile_definitions(sohamalloc_static PRIVATE SOHAM_OVERRIDE=1 SOHAM_CXX_OPERATORS=0)
 set_target_properties(sohamalloc_static PROPERTIES OUTPUT_NAME sohamalloc)
 
 # Prefixed library: soham_* only (sanitizer testing of the allocator itself).
