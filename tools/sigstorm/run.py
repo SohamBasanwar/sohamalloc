@@ -205,6 +205,22 @@ def num(r, k):
     return int(v) if v.isdigit() else 0
 
 
+def checked(r):
+    """A trial whose own counters are impossible (more NULL results or interrupted calls than handler calls
+    entered) had its harness state overwritten: sigstorm takes its per-thread records from the allocator
+    under test.  Report such a trial as corruption, whatever its exit status said; results.csv keeps the
+    raw row.  ("inside" may exceed completed calls by the handlers that never completed: one per thread.)"""
+    lim = num(r, "handlers") + int(r["threads"])
+    if num(r, "inside") <= lim and num(r, "handler_null") <= lim and num(r, "handler_bad") <= lim:
+        return r
+    r = dict(r)
+    if r["outcome"] in ("survived", "stall"):
+        r["outcome"], r["detail"] = "corruption", "harness counters overwritten"
+    for k in ("inside", "handler_null", "handler_bad"):
+        r[k] = ""
+    return r
+
+
 def cell(rs):
     """Summary of a set of trials: n, outcome counts, failures, Wilson CI, TTF."""
     n = len(rs)
@@ -219,6 +235,7 @@ def cell(rs):
 
 
 def report(rows, a, path):
+    rows = [checked(r) for r in rows]
     allocs = sorted({r["alloc"] for r in rows}, key=lambda x: list(ALLOCATORS).index(x) if x in ALLOCATORS else 99)
     hs = [h for h in HANDLERS if any(r["handler"] == h for r in rows)]
     ts = sorted({int(r["threads"]) for r in rows})
@@ -233,7 +250,9 @@ def report(rows, a, path):
            "and aborted). `P(fail)` is the fraction of trials that failed within the trial length, "
            "with a 95%% Wilson interval; `TTF` is the time to failure of the failed trials (median "
            "and range, ms). `inside` counts handler calls that interrupted an allocator call of the "
-           "workload (the exposure that tests signal safety)." % (a.seconds, 2 * a.interval_us, a.stall_ms), ""]
+           "workload (the exposure that tests signal safety). A trial whose own counters are impossible "
+           "(the allocator overwrote the harness's records, which come from it) is counted as corruption."
+           % (a.seconds, 2 * a.interval_us, a.stall_ms), ""]
     out += ["## Summary: signal-handler kinds pooled (%s), per thread count" % ", ".join(sig), "",
             "| allocator | threads | trials | failed | P(fail) [95% CI] | median TTF (ms) | handler calls | inside an allocator call |",
             "|---|---:|---:|---:|---|---:|---:|---:|"]
