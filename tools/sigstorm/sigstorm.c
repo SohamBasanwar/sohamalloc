@@ -16,6 +16,9 @@
  *
  * Result: one line on stdout, and the exit status
  *   0 survived    3 stall    4 corruption    2 usage error
+ * The line counts signals sent, handler calls completed (handlers=) and
+ * handler calls that interrupted an allocator call of the workload
+ * (handler_inside=, the exposure that tests signal safety).
  * A crash (the allocator aborting, or a segfault) kills the process with
  * that signal; tools/sigstorm/run.py records it.
  *
@@ -118,7 +121,8 @@ typedef struct {
     int idx;
     uint64_t rng;
     _Atomic uint64_t steps, h_entered, h_done, h_null, h_bad;
-    _Atomic int op, hop, in_handler;
+    _Atomic uint64_t h_inside;           /* handler calls that interrupted an allocator call */
+    _Atomic int op, hop, in_handler, exited;
     blk_t live[MAXLIVE];
     blk_t sorted[MAXLIVE];
     void *_Atomic hpool[HPOOL];          /* blocks the "free" handler releases */
@@ -166,6 +170,10 @@ static void handler(int sig) {
     int e = errno;
     atomic_store(&w->in_handler, 1);
     atomic_fetch_add(&w->h_entered, 1);
+    /* The workload stores op just before and just after each allocator call,
+     * so op != OP_NONE means this signal interrupted that call (or landed a
+     * few instructions from it): the exposure that matters. */
+    if (atomic_load_explicit(&w->op, memory_order_relaxed) != OP_NONE) atomic_fetch_add(&w->h_inside, 1);
     switch (opt_handler) {
     case HK_NONE:
         break;
@@ -413,6 +421,7 @@ static void *worker(void *arg) {
         }
         atomic_store_explicit(&w->steps, it, memory_order_relaxed);
     }
+    atomic_store(&w->exited, 1);
     return NULL;
 }
 
@@ -444,16 +453,18 @@ static void report(const char *outcome, uint64_t elapsed_ns) {
     out_kv("interval_us", (uint64_t)opt_interval_us);
     out_kv("seed", opt_seed);
     out_kv("elapsed_ms", elapsed_ns / 1000000u);
-    uint64_t steps = 0, he = 0, hd = 0, hn = 0, hb = 0;
+    uint64_t steps = 0, he = 0, hd = 0, hn = 0, hb = 0, hi = 0;
     for (int i = 0; i < opt_threads; i++) {
         steps += atomic_load(&ws[i].steps);
         he += atomic_load(&ws[i].h_entered);
         hd += atomic_load(&ws[i].h_done);
         hn += atomic_load(&ws[i].h_null);
         hb += atomic_load(&ws[i].h_bad);
+        hi += atomic_load(&ws[i].h_inside);
     }
     out_kv("signals", atomic_load(&g_signals));
     out_kv("handlers", hd);
+    out_kv("handler_inside", hi);
     out_kv("handler_null", hn);
     out_kv("handler_bad", hb);
     out_kv("steps", steps);
@@ -522,8 +533,12 @@ int main(int argc, char **argv) {
     if (signals && pthread_create(&sig_th, NULL, signaller, NULL) != 0) return 2;
     pthread_barrier_wait(&g_start);
 
-    /* Watchdog. */
+    /* Watchdog.  When the time is up the workers are told to stop, and the
+     * trial survives only when every one of them finishes its step and exits:
+     * a thread that deadlocked near the end of the trial never exits and is
+     * reported as a stall --stall-ms after its last progress, like any other. */
     uint64_t start = now_ns(), stall_ns = (uint64_t)opt_stall_ms * 1000000u;
+    int stopping = 0;
     uint64_t *last = __builtin_alloca(sizeof(uint64_t) * (size_t)opt_threads);
     uint64_t *since = __builtin_alloca(sizeof(uint64_t) * (size_t)opt_threads);
     for (int i = 0; i < opt_threads; i++) { last[i] = 0; since[i] = start; }
@@ -541,7 +556,10 @@ int main(int argc, char **argv) {
             out_flush();
             _exit(4);
         }
+        int running = 0;
         for (int i = 0; i < opt_threads; i++) {
+            if (atomic_load(&ws[i].exited)) continue;
+            running++;
             uint64_t prog = atomic_load(&ws[i].steps) + atomic_load(&ws[i].h_done);
             if (prog != last[i]) { last[i] = prog; since[i] = now; continue; }
             if (now - since[i] >= stall_ns) {
@@ -554,10 +572,14 @@ int main(int argc, char **argv) {
                 _exit(3);
             }
         }
-        if (now - start >= (uint64_t)opt_seconds * 1000000000u) {
+        if (stopping && !running) {
             report("survived", now - start);
             out_flush();
             _exit(0);
+        }
+        if (!stopping && now - start >= (uint64_t)opt_seconds * 1000000000u) {
+            atomic_store(&g_stop, 1);
+            stopping = 1;
         }
     }
 }
