@@ -77,7 +77,7 @@ ALLOCATORS = {
     "sohamalloc": os.environ.get("SOHAM_LIB", os.path.join(ROOT, "build", "libsohamalloc.so")),
 }
 
-HANDLERS = ["nosignal", "none", "malloc", "free", "realloc", "calloc", "large", "churn"]
+HANDLERS = ["nosignal", "none", "malloc", "free", "realloc", "calloc", "large", "churn", "aligned"]
 CONTROLS = ("nosignal", "none")
 FIELDS = ["trial", "alloc", "threads", "handler", "seed", "outcome", "detail", "elapsed_ms",
           "signals", "handlers", "inside", "handler_null", "handler_bad", "steps", "exit"]
@@ -214,6 +214,7 @@ def cell(rs):
     ttf = sorted(int(r["elapsed_ms"]) for r in fails if str(r.get("elapsed_ms", "")).lstrip("-").isdigit())
     return {"n": n, "c": c, "f": len(fails), "lo": lo, "hi": hi, "ttf": ttf,
             "calls": sum(num(r, "handlers") for r in rs), "inside": sum(num(r, "inside") for r in rs),
+            "null": sum(num(r, "handler_null") for r in rs), "bad": sum(num(r, "handler_bad") for r in rs),
             "other": n - sum(c.values())}
 
 
@@ -253,6 +254,19 @@ def report(rows, a, path):
             rs = [r for r in rows if r["alloc"] == name and r["handler"] == h]
             cells.append("%d/%d" % (cell(rs)["f"], len(rs)) if rs else "-")
         out.append("| %s | %s |" % (name, " | ".join(cells)))
+    out += ["", "## Handler results (all thread counts)", "",
+            "Handler calls that completed, and among them the allocations that returned NULL (`null`: the "
+            "`free` handler counts an empty pool instead) and results that were wrong (`bad`: calloc memory "
+            "not zero, realloc contents lost, aligned memory misaligned). Trials that failed are included up "
+            "to their failure.", "",
+            "| allocator | handler | calls | null | bad |", "|---|---|---:|---:|---:|"]
+    for name in allocs:
+        for h in sig:
+            rs = [r for r in rows if r["alloc"] == name and r["handler"] == h]
+            if not rs:
+                continue
+            x = cell(rs)
+            out.append("| %s | %s | %d | %d | %d |" % (name, h, x["calls"], x["null"], x["bad"]))
     out += ["", "## Every cell", "",
             "| allocator | threads | handler | trials | survived | stall | corruption | crash | P(fail) [95% CI] | TTF median [min, max] (ms) | inside/trial |",
             "|---|---:|---|---:|---:|---:|---:|---:|---|---|---:|"]

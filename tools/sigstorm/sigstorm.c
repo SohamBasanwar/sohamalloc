@@ -22,7 +22,7 @@
  * A crash (the allocator aborting, or a segfault) kills the process with
  * that signal; tools/sigstorm/run.py records it.
  *
- *   sigstorm --handler=malloc|free|realloc|calloc|large|churn|none
+ *   sigstorm --handler=malloc|free|realloc|calloc|large|churn|aligned|none
  *            [--seconds=10] [--interval-us=20] [--threads=2]
  *            [--stall-ms=2000] [--seed=1]
  *
@@ -30,6 +30,12 @@
  * allocates 256 blocks (one size per round, cycling 48 B .. 160 KB), then
  * frees them, so handler-context allocation fills pages, empties them and
  * drives refills, trims and pool claims in every size range.
+ *
+ * --handler=aligned alternates posix_memalign and aligned_alloc with
+ * alignments of 32 B .. 64 KiB and sizes of 1 B .. 40 KB, and counts a
+ * misaligned result as a bad one (handler_bad=).  Added after review round 3
+ * found that sohamalloc served aligned requests in handler context from its
+ * static arena only (defect R3-2), which no other handler kind exercised.
  *
  * --workload=page draws every block from 16 KiB .. 512 KiB instead of the
  * mostly-small mix, so threads spend much of their time in page-heap
@@ -55,8 +61,8 @@
 
 /* ------------------------------------------------------------ options */
 
-enum { HK_NONE, HK_MALLOC, HK_FREE, HK_REALLOC, HK_CALLOC, HK_LARGE, HK_CHURN };
-static const char *const hk_names[] = { "none", "malloc", "free", "realloc", "calloc", "large", "churn" };
+enum { HK_NONE, HK_MALLOC, HK_FREE, HK_REALLOC, HK_CALLOC, HK_LARGE, HK_CHURN, HK_ALIGNED };
+static const char *const hk_names[] = { "none", "malloc", "free", "realloc", "calloc", "large", "churn", "aligned" };
 
 static int opt_handler = HK_MALLOC;
 static long opt_seconds = 10;
@@ -241,6 +247,26 @@ static void handler(int sig) {
         unsigned char *p = malloc(300000);
         if (!p) { atomic_fetch_add(&w->h_null, 1); break; }
         p[0] = 1; p[150000] = 2; p[299999] = 3;
+        atomic_store(&w->hop, OP_FREE);
+        free(p);
+        break;
+    }
+    case HK_ALIGNED: {
+        uint64_t k = atomic_load(&w->h_entered);
+        size_t align = (size_t)32 << (k % 12);              /* 32 B .. 64 KiB */
+        size_t n = 1 + (size_t)(k * 61 % 40000);
+        unsigned char *p = NULL;
+        atomic_store(&w->hop, OP_MEMALIGN);
+        if (k & 1) {
+            void *q = NULL;
+            if (posix_memalign(&q, align, n) == 0) p = q;
+        } else {
+            n = (n + align - 1) & ~(align - 1);              /* C11 aligned_alloc: a multiple */
+            p = aligned_alloc(align, n);
+        }
+        if (!p) { atomic_fetch_add(&w->h_null, 1); break; }
+        if ((uintptr_t)p & (align - 1)) atomic_fetch_add(&w->h_bad, 1);
+        p[0] = 1; p[n - 1] = 2;
         atomic_store(&w->hop, OP_FREE);
         free(p);
         break;
@@ -488,7 +514,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--workload=mixed")) opt_page_workload = 0;
         else opt_handler = -1;
         if (opt_handler < 0) {
-            static const char u[] = "usage: sigstorm --handler=none|malloc|free|realloc|calloc|large|churn [--seconds=N] "
+            static const char u[] = "usage: sigstorm --handler=none|malloc|free|realloc|calloc|large|churn|aligned [--seconds=N] "
                                     "[--interval-us=N] [--threads=N] [--stall-ms=N] [--seed=N]\n";
             if (write(2, u, sizeof u - 1) < 0) {}
             return 2;
