@@ -1,0 +1,59 @@
+{
+ "findings": [
+  {
+   "id": "R3-CORRECTNESS-1",
+   "title": "fork() from multiple threads concurrently: g_fork_saved_busy is a single global, so a heapless thread's busy byte is restored to 0 and its next malloc dereferences a NULL heap (parent-process SIGSEGV)",
+   "severity": "critical",
+   "file": "src/api.c",
+   "line": 898,
+   "scenario": "fork_prepare/fork_parent/fork_child (src/api.c:898-952) save the forking thread's tls.busy into the single global `static uint8_t g_fork_saved_busy` and restore it afterwards. glibc runs pthread_atfork prepare/parent/child handlers in the context of each forking thread and does NOT serialize fork() across threads (measured on this box: up to 4 prepare and 4 parent handlers run concurrently, Ubuntu 26.04 glibc 2.43). So when thread A (never allocated: busy=BUSY_NOHEAP=2, heap=NULL) and thread B (has a heap: busy=0) both fork concurrently, B's fork_prepare overwrites g_fork_saved_busy with 0 after A's fork_prepare saved 2; A's fork_parent then stores busy=0 into A. A's next malloc takes malloc_fast with busy==0 (src/api.c:443-461), loads t->heap==NULL and executes `mov 0x38(%rax)` on heap+0x38 -> SIGSEGV. This kills the PARENT process (not just a child), i.e. a normal multithreaded program that forks. CONFIRMED: /tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/review3-B/fork_busy_race.c segfaults 3/3 under LD_PRELOAD of the release build (crash in soham_malloc+64 under gdb, faulting address 0x38, thread in forker_a of the parent); the identical binary on glibc never crashes. An instrumented copy that aborts when fork_parent/fork_child restore busy=0 to a heapless thread fires every run ('fork_parent restored busy=0 to a heapless thread (g_fork_saved_busy race)'), isolating the cause to the shared global.",
+   "confirmed_by_repro": true,
+   "repro_path": "/tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/review3-B/fork_busy_race.c",
+   "fix": "Make the saved value per-thread: `static _Thread_local uint8_t g_fork_saved_busy SOHAM_TLS_MODEL;`. prepare/parent/child of one fork all run on the same thread (child is its clone, which copies that thread's TLS), so a thread-local slot is written by prepare and read by the matching parent/child with no cross-thread clobber. Equivalently, drop the global and recompute in parent/child as busy_leave does: `atomic_store(&t->busy, (t->busy & ~BUSY_IN) ... )` is not enough because BUSY_IN was force-set in prepare; simplest correct form is `atomic_store(&t->busy, t->heap ? 0 : BUSY_NOHEAP)` in both parent and child, matching busy_leave (src/api.c:272-275)."
+  },
+  {
+   "id": "R3-CORRECTNESS-2",
+   "title": "Memory allocated by the shared heap (signal-handler/trymode allocations) is never released: g_shared is never flushed and its empty pages are never trimmed, so the peak handler-allocation footprint stays resident forever",
+   "severity": "major",
+   "file": "src/api.c",
+   "line": 739,
+   "scenario": "Handler-context (trymode) mallocs go to g_shared (alloc_slow, src/api.c:401-409; heap_alloc(g_shared,...)). g_shared is never any thread's t->heap, so it is never passed to heap_flush: thread_exit_cb flushes only the exiting thread's own heap, and soham_collect(force) flushes only t->heap (src/api.c:739). Its pages, once filled and then freed by other threads, take the remote path: owner stays g_shared->tag (not ORPHAN/QUEUED), so they are never pooled/claimable and never returned to the page heap. bin_trim_avail (which would release wholly-free avail pages) is skipped in trymode (src/heap.c:675) and in any case only runs when a thread refills that heap -- g_shared has no running thread to refill it. Result: the high-water mark of all handler/shared-heap allocations is pinned in RSS permanently; neither malloc_trim(0) nor soham_collect(1) can reclaim it, and ph_purge(PURGE_ALL) cannot touch it because the slices are still 'used' by g_shared. CONFIRMED: /tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/review3-B/shared_retain.c (MODE=handler): after a handler allocates 64 MiB and main frees every block and calls malloc_trim(0), RSS stays 66 MiB (soham stats: cached_heaps 64 MiB); glibc drops to 2 MiB. A long-running process that allocates in signal handlers grows to its peak handler footprint and never shrinks.",
+   "confirmed_by_repro": true,
+   "repro_path": "/tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/review3-B/shared_retain.c",
+   "fix": "Give soham_collect a path that reclaims the shared heap: after flushing t->heap, take g_shared_lock and run bin_trim_avail across every bin of g_shared (and notify_drain(g_shared)) so wholly-free avail pages reach the page heap, or flush g_shared's empty pages directly. Because g_shared has no running owner, this collection must be driven from soham_collect / an occasional slow path rather than from g_shared's own refills (src/api.c:732-745; src/heap.c:644-652,710-730)."
+  },
+  {
+   "id": "R3-CORRECTNESS-3",
+   "title": "bss_alloc advances g_bss_top on every failed allocation; on ILP32 (armhf/i386/32-bit musl) g_bss_top (32-bit size_t) wraps after ~4 GiB of failed handler allocations and then returns pointers overlapping still-live bss blocks (heap corruption)",
+   "severity": "major",
+   "file": "src/heap.c",
+   "line": 66,
+   "scenario": "bss_alloc does `off = atomic_fetch_add(&g_bss_top, need); if (off + need > BSS_ARENA_SIZE) return NULL;` (src/heap.c:66-67). The fetch_add is unconditional, so every call -- including the ones that then fail because the 384 KiB arena is full -- permanently increases g_bss_top by `need`. On a 64-bit target g_bss_top is 64-bit and this merely means handler allocations stay failed. On ILP32 g_bss_top is a 32-bit size_t: after about 4 GiB / need failed requests it wraps to a small value, `off + need <= BSS_ARENA_SIZE` passes again, and bss_alloc hands out addresses inside g_bss_arena that overlap bss blocks it returned earlier and that are still live. The bss arena serves handler-context allocations that cannot use the shared heap: every aligned allocation in a handler (alloc_aligned's busy/bss branch, src/api.c:661-666) and any handler malloc while g_shared_lock is contended. CONFIRMED on armhf under qemu-arm (arm-linux-gnueabihf, 32-bit): /tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/review3-B/bss_wrap.c makes a signal handler (that detects it interrupted the allocator via soham_get_stats()==-1) call aligned_alloc(64,262144) 40000 times; after the arena fills, g_bss_top wraps and 3 of the returned pointers overlap earlier live blocks, and 2 of those live blocks' contents are overwritten. The same binary on x86-64 (64-bit g_bss_top) shows 0 overlaps.",
+   "confirmed_by_repro": true,
+   "repro_path": "/tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/review3-B/bss_wrap.c",
+   "fix": "Do not advance g_bss_top past the end. Use a bounded CAS: `size_t off = atomic_load(&g_bss_top); do { if (off > BSS_ARENA_SIZE - need || need > BSS_ARENA_SIZE) return NULL; } while (!atomic_compare_exchange_weak(&g_bss_top, &off, off + need));` (src/heap.c:62-71). This both fixes the ILP32 wrap-to-corruption and stops the unbounded monotonic growth of g_bss_top on 64-bit."
+  },
+  {
+   "id": "R3-CORRECTNESS-4",
+   "title": "Under a finite RLIMIT_AS the 64 MiB minimum window size plus the full-width granule map waste a large fraction of the address-space budget: ~40% less usable memory than glibc at ulimit -v 128 MiB",
+   "severity": "minor",
+   "file": "src/api.c",
+   "line": 184,
+   "scenario": "geometry_init adapts the window to RLIMIT_AS with `t = pow2_floor(lim/8); if (t < W) W = t < Wmin ? Wmin : t;` then `if (W < 16*H) W = 16*H;` with Wmin = 64 MiB and H = 2 MiB (src/api.c:174,182-184). Windows are reserved PROT_NONE|MAP_NORESERVE, but MAP_NORESERVE reservations still count against RLIMIT_AS (which caps VSZ), so each 64 MiB window consumes 64 MiB of the budget, and the granule map is sized to the whole 48-bit space (2^(48-wshift) bytes = 4 MiB when wshift=26). With a 128 MiB AS limit the gmap (4 MiB) plus one 64 MiB window nearly exhaust the budget and a second window will not fit, so only ~60 MiB is ever usable. MEASURED (/tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/review3-B/aslimit.c, 64-byte blocks): ulimit -v 128 MiB -> glibc 100 MiB usable, sohamalloc 60 MiB; -v 100 MiB -> glibc 77, sohamalloc 60; -v 256 MiB -> glibc 202, sohamalloc 180. The allocator still fails gracefully (NULL + ENOMEM), but a program sized to its RLIMIT_AS/cgroup budget (containers) gets up to ~40% less heap. Precondition: a finite, small RLIMIT_AS.",
+   "confirmed_by_repro": true,
+   "repro_path": "/tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/review3-B/aslimit.c",
+   "fix": "When the AS limit is small, scale the window below the 64 MiB floor (e.g. let Wmin follow lim, keeping only W >= 16*H = 32 MiB) and/or size the granule map to the reserved windows rather than the full 48-bit space, so reservation overhead is a small fraction of the budget. Minimal: drop the Wmin=64 MiB clamp in the RLIMIT_AS branch and rely on the `W < 16*H` floor (src/api.c:182-184)."
+  },
+  {
+   "id": "R3-CORRECTNESS-5",
+   "title": "Per-page link keys are predictable from a single leaked key: heap_rand is xorshift64* (invertible) seeded from one global g_rng_seed via invertible mix64, so one recovered key yields a heap's entire past/future key stream, degrading the link-encoding hardening to a single leak",
+   "severity": "minor",
+   "file": "src/heap.c",
+   "line": 99,
+   "scenario": "Link encoding (link_enc/link_dec, src/internal.h:396-401) uses a per-page key as the only secret. Keys are consecutive outputs of heap_rand (xorshift64*, src/heap.c:99-105): its output is `state * 0x2545f4914f6cdd1d`, an odd multiplier that is invertible, and each xorshift step is invertible, so any one output reveals the full forward and backward key stream of that heap. Each heap's initial state is `mix64(g_rng_seed ^ (tag<<32)) | 1` (src/heap.c:596) with mix64 invertible, and the same g_rng_seed also places windows (src/pageheap.c:210-212). The list terminator is stored as bswap(0 ^ key ^ (a>>12)) = bswap(key ^ (a>>12)), so a single heap read-overflow that leaks the terminator word of a free block yields that page's key directly, and from it (via the invertible RNG) the keys of every other page the heap has created or will create -- so an attacker with one leak can forge valid encoded links on other pages, defeating the free-list integrity check. (Confirmed by code analysis of the published formulas; offline invertibility check in /tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/review3-B/rng_predict.c. No forging against a live allocator was built.) The docs frame link encoding as raising the bar rather than an absolute guarantee, so this is a hardening weakness, not a guarantee break.",
+   "confirmed_by_repro": false,
+   "repro_path": "/tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/review3-B/rng_predict.c",
+   "fix": "Derive each page key from a keyed non-invertible mix of a global secret and the page base rather than from a reversible per-heap PRNG stream, e.g. key = mix64(g_secret ^ (pbase>>SOHAM_SLICE_SHIFT)) combined with a second independent secret word, so that recovering one page's key does not reveal g_rng_seed, the heap state, or any other page's key (src/heap.c:174,596). At minimum, use a separate secret for keys than the one that places windows."
+  }
+ ]
+}

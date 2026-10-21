@@ -125,3 +125,30 @@ All five confirmed defects are fixed, each with a regression test that fails on 
 - **Where its data is.** `bench/out/sigstorm-campaign1/` (results.csv, appended per trial; env.txt; args.txt), with the log in `bench/out/sigstorm-campaign1.log`. `bench/out/` is git-ignored: copy the text files to `docs/research-log/data/sigstorm-campaign1/` when it finishes, or at a checkpoint.
 - **If interrupted:** `SOHAM_LIB=$PWD/bench/out/sigstorm-campaign1/libsohamalloc-064d208.so python3 tools/sigstorm/run.py --resume bench/out/sigstorm-campaign1 --jobs 5`. It skips completed trials and records the resumption in env.txt.
 - **Concurrent load.** Review round 3 runs at the same time. The outcome measure (stall = no progress for 2 s) is insensitive to CPU contention. The `inside` exposure counts and the load averages in env.txt show the load.
+
+### Checkpoint (2026-10-21 13:00 CDT): usage limit at 99%, work saved
+
+- **Review round 3** (`wf_107e841a-152`).
+  - The correctness review finished with 5 findings, **not yet verified**; its verifier is running. They are saved in `docs/research-log/data/review3/correctness-findings-unverified.json`:
+
+    | Severity | Finding |
+    |---|---|
+    | critical | `fork()` from several threads: the single global `g_fork_saved_busy` |
+    | major | The shared (handler) heap is never released |
+    | major | `bss_alloc` offset wrap on ILP32 |
+    | minor | Address-space waste under `RLIMIT_AS` |
+    | minor | Link keys predictable from one leaked key |
+
+  - The concurrency reviewer is still running.
+  - **Recovery:** same session, `Workflow({scriptPath: ".../workflows/scripts/sohamalloc-review-round3-wf_107e841a-152.js", resumeFromRunId: "wf_107e841a-152"})`. New session: salvage from `journal.jsonl` and the agent transcripts in `~/.claude/projects/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/subagents/workflows/wf_107e841a-152/`.
+- **sigstorm campaign 1** is running (1264 of 6480 trials at 12:55). To resume, see the checkpoint above.
+- **Done this session:**
+  - sigstorm end-of-trial stall fix (85f3b78);
+  - the survey `docs/research/06-signal-handler-allocation-survey.md` (55e6900);
+  - personal skills `~/.claude/skills/sohamalloc-{verify,benchmark,research,security-audit}` (outside git);
+  - 12 unrelated plugins disabled for this project in `.claude/settings.local.json`.
+- **Next:**
+  1. Verify the round-3 findings.
+  2. Fix them with fail-before/pass-after tests, then run the matrix (`/sohamalloc-verify`), commit and push.
+  3. Rerun sohamalloc's campaign rows on the fixed code.
+  4. Copy the campaign data to `docs/research-log/data/`.
