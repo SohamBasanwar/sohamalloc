@@ -102,3 +102,15 @@ All five confirmed defects are fixed, each with a regression test that fails on 
 6. A tuned benchmark campaign with ten or more repetitions and confidence intervals.
 7. Complete the research log.
 8. The paper and the presentation, only after the gates.
+
+### Checkpoint (2026-10-21 12:12 CDT): review round 3 running
+
+- **Run.** Workflow run `wf_107e841a-152` (4 agents) reviews HEAD c1a9791.
+- **Where its work is.** Agent transcripts and the journal (completed results):
+  `~/.claude/projects/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/subagents/workflows/wf_107e841a-152/`.
+  Repros: `/tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/review3-*`.
+- **If interrupted**, two ways to recover:
+  - **Same session:** resume with
+    `Workflow({scriptPath: ".../workflows/scripts/sohamalloc-review-round3-wf_107e841a-152.js", resumeFromRunId: "wf_107e841a-152"})`.
+    Completed agents are reused.
+  - **New session:** salvage the findings from journal.jsonl and the agent transcripts.
