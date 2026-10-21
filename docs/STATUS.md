@@ -65,6 +65,17 @@ The limits of the signal-safety guarantee are documented in `docs/IMPLEMENTATION
   - **Same session:** `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round4-wf_a26b2874-42a.js", resumeFromRunId: "wf_a26b2874-42a"})`.
   - **New session:** salvage the findings from `journal.jsonl` and the agent transcripts. Save them to `docs/research-log/data/review4/` (raw notes stay out of git, as in round 3).
 
+**Research-log update**, started 21:5x UTC as workflow run `wf_de0bc03b-12d`:
+
+- **What it does.** Four writers each write one document, then a fact-checker checks it against its sources and fixes it in place:
+  - extend `01-timeline` (continuation from 2026-10-19T14:30Z);
+  - write `02-experiments`, `04-design-decisions` and `06-paper-assessment`.
+
+  The writers touch only `docs/research-log/`. Nothing is committed until the main session reviews the result.
+- **If interrupted:**
+  - **Same session:** `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-research-log-wf_de0bc03b-12d.js", resumeFromRunId: "wf_de0bc03b-12d"})`.
+  - **New session:** check `git status` for partly written files in `docs/research-log/`, and the journal in `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/subagents/workflows/wf_de0bc03b-12d/`.
+
 ## Next
 
 1. **Review round 4** on this commit (running, see above). Repeat rounds until none confirms a critical or major finding (gate 2).
