@@ -1,0 +1,6 @@
+# Overlap of the atfork handlers of two threads that call fork() together (glibc 2.43, 7.0.0-38-generic, 2026-10-21T21:30:25Z)
+# program: atfork-overlap.c (in this directory); 3 runs of 1000 rounds
+# 'thread first' = the thread that started its fork first entered prepare first; 'overlap' = the other thread's prepare began before the first one's parent handler ran
+thread first: overlap 625, none 251 | main first: overlap 96, none 28
+thread first: overlap 536, none 299 | main first: overlap 110, none 55
+thread first: overlap 546, none 264 | main first: overlap 150, none 40

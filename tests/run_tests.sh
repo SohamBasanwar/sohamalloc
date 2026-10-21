@@ -227,6 +227,10 @@ regress_signal_solo regress/signal_solo_realloc.c c 60 soham
 regress_invalid_frees regress/invalid_frees.c c 60 soham
 regress_trim_deadlock regress/signal_trim_deadlock.c c 60 soham
 regress_fork_notify regress/fork_notify_reuse.c c 60 soham
+regress_fork_busy  regress/fork_concurrent_busy.c c 120 soham
+regress_sig_aligned regress/signal_aligned_enomem.c c 60 soham
+regress_shared_trim regress/signal_shared_release.c c 60 soham
+regress_bss_bounded regress/bss_bounded.c c 60 soham
 "
 fi
 

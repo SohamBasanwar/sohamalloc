@@ -1,0 +1,94 @@
+# Review round 3 regression tests, unfixed against fixed code, 2026-10-21T21:28:54Z
+# unfixed: c1a9791 allocator + the two arena test hooks (sha256 fbfa4e1266ef4912)
+# fixed:   working tree on fcc86ec with the round-3 fixes F1-F4 (sha256 77ab3a6b1f1c62ba)
+# armhf:   the same two source trees cross-built (arm-linux-gnueabihf-gcc), run under qemu-arm
+# tests built like tests/run_tests.sh does (-O2 -fno-builtin-malloc ...); host 7.0.0-38-generic, load 16.60 14.58 11.61 (sigstorm campaign and the test matrix running)
+## fork_concurrent_busy OLD run 1
+the child of a concurrent fork crashed
+FAIL: the parent crashed after a concurrent fork
+exit=1
+## fork_concurrent_busy OLD run 2
+the child of a concurrent fork crashed
+FAIL: the parent crashed after a concurrent fork
+exit=1
+## fork_concurrent_busy OLD run 3
+the child of a concurrent fork crashed
+FAIL: the parent crashed after a concurrent fork
+exit=1
+## signal_aligned_enomem OLD run 1
+39199 handler calls, 14559 NULL, 0 misaligned
+FAIL
+exit=1
+## signal_aligned_enomem OLD run 2
+44451 handler calls, 16000 NULL, 0 misaligned
+FAIL
+exit=1
+## signal_aligned_enomem OLD run 3
+44112 handler calls, 13976 NULL, 0 misaligned
+FAIL
+exit=1
+## signal_shared_release OLD run 1
+handler allocated 8192 of 8192 blocks; cached in heaps (KiB): allocated 127, freed 16511, after activity 16703, after soham_collect(1) 16384
+FAIL: freed handler memory stays cached
+exit=1
+## signal_shared_release OLD run 2
+handler allocated 8192 of 8192 blocks; cached in heaps (KiB): allocated 127, freed 16511, after activity 16703, after soham_collect(1) 16384
+FAIL: freed handler memory stays cached
+exit=1
+## signal_shared_release OLD run 3
+handler allocated 8192 of 8192 blocks; cached in heaps (KiB): allocated 127, freed 16511, after activity 16703, after soham_collect(1) 16384
+FAIL: freed handler memory stays cached
+exit=1
+## bss_bounded OLD x86-64
+counter 395760 beyond the arena after filling
+arena filled with 96 blocks; counter 395760 after filling, 6001995760 after 20000 failed requests
+the counter grows on failed requests
+FAIL
+exit=1
+## fork_concurrent_busy NEW run 1
+1000 rounds of two concurrent forks: 0 children failed
+PASS
+exit=0
+## fork_concurrent_busy NEW run 2
+1000 rounds of two concurrent forks: 0 children failed
+PASS
+exit=0
+## fork_concurrent_busy NEW run 3
+1000 rounds of two concurrent forks: 0 children failed
+PASS
+exit=0
+## signal_aligned_enomem NEW run 1
+44692 handler calls, 0 NULL, 0 misaligned
+PASS
+exit=0
+## signal_aligned_enomem NEW run 2
+43856 handler calls, 0 NULL, 0 misaligned
+PASS
+exit=0
+## signal_aligned_enomem NEW run 3
+44811 handler calls, 0 NULL, 0 misaligned
+PASS
+exit=0
+## signal_shared_release NEW run 1
+handler allocated 8192 of 8192 blocks; cached in heaps (KiB): allocated 127, freed 16511, after activity 383, after soham_collect(1) 0
+PASS
+exit=0
+## signal_shared_release NEW run 2
+handler allocated 8192 of 8192 blocks; cached in heaps (KiB): allocated 127, freed 16511, after activity 383, after soham_collect(1) 0
+PASS
+exit=0
+## signal_shared_release NEW run 3
+handler allocated 8192 of 8192 blocks; cached in heaps (KiB): allocated 127, freed 16511, after activity 383, after soham_collect(1) 0
+PASS
+exit=0
+## bss_bounded NEW x86-64
+arena filled with 96 blocks; counter 391680 after filling, 391680 after 20000 failed requests
+PASS
+exit=0
+## bss_bounded OLD armhf
+FAIL: crashed in bss_alloc on a full arena (counter wrapped)
+exit=1
+## bss_bounded NEW armhf
+arena filled with 96 blocks; counter 391680 after filling, 391680 after 20000 failed requests
+PASS
+exit=0

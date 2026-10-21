@@ -90,9 +90,22 @@ A remote freer cannot walk the owner's list. A cycle in the remote chain (a thre
 - **I1.** `owner == tag` ⇒ the page is `bins[c].cur`, or on `bins[c].avail` or `bins[c].full` of that heap. `r.lflags` says which list.
 - **H1.** A heap is held by exactly one thread at a time: its running thread, or a thread holding it exclusively (the pool, or the fork child). Only the holder changes owner words of its pages. So the local-free check `owner == tag` cannot be invalidated between the check and the store.
 - **H2.** `tls.busy` is set around every allocator operation of the thread that touches its heap or takes any allocator lock: the fast paths, the slow paths, init and heap attach (`thread_prepare`), thread exit, `soham_collect`, `soham_get_stats` and `soham_check_heap` (`busy_enter`/`busy_leave`). A signal handler that finds it set never touches the thread's heap and never waits for a lock:
-  - its mallocs use the shared heap via trylock (`trymode`), or the static arena;
+  - its allocations (the malloc family, the aligned family and C++ `new`) use the shared heap via trylock (`trymode`), or the static arena (`handler_alloc`). Before 2026-10-21 the aligned family went straight to the static arena and failed with ENOMEM once it was used up (defect R3-2);
   - its frees use the lock-free remote path, or the deferred list for runs and solos.
 - **H3.** In trymode no blocking lock is ever taken: every lock goes through `lock_or_try()`, and work that needs a blocking lock is skipped (the refill's trim of empty avail pages, the decay tick, `pending_drain`). SOHAM_DEBUG builds enforce it: `soham_lock()` aborts in trymode (`soham_debug_check_blocking`). Violated before 2026-10-21 by the refill's trim (defect R2-1, `docs/research-log/03-defects-and-faults.md`).
+
+### 4.1 The shared heap and the static arena
+
+- **Who uses the shared heap.** Allocations made in handler context (`handler_alloc`, under `shared_lock` taken by trylock, in trymode), and threads whose heap could not be attached (under the blocking lock). No thread owns it: it is held by whoever holds `shared_lock`. No thread's tag equals its tag, so every free of one of its blocks is a remote free.
+- **Trim.** Since no refill of its own runs outside trymode, the shared heap is trimmed by other threads (`shared_trim`, defect R3-4). Every 64th refill of a thread heap checks `g_shared_trim`, and at most once per purge interval across all threads it runs the trim:
+  1. take `shared_lock` by trylock (if it is taken, try again at a later tick);
+  2. drain the notify stack, which moves notified full pages to the avail list;
+  3. unlink every avail page whose provisioned blocks are all free (local count + remote count = provisioned);
+  4. unlock, then for each unlinked page collect its remote chain (an exact-length walk, which aborts on an A,B,A remote double free as in `resolve`) and release it.
+
+  The lock is held only for list work, so a handler that finds it taken (and falls back to the static arena) is turned away briefly. `g_shared_trim` is set by every allocation from the shared heap and by every notification pushed to it. A trim clears it once no avail page and no notification is left. Full pages with less than 1/8 free, and the current page of each class, stay (as on any heap).
+- **Flush.** `soham_collect(1)` and `malloc_trim` flush the shared heap completely (`shared_flush`: `heap_flush` under the blocking lock, then the notify stack is reopened).
+- **Static arena.** 384 KiB in .bss, bump-allocated, lock-free. It serves allocations made during the allocator's own initialisation and handler-context requests when the shared heap is unavailable (its trylock, or a trylock below it, failed), with alignment up to 4096. Its blocks are never reused: their frees are counted no-ops. The bump counter only moves when a block fits (a CAS loop); before 2026-10-21 it also advanced on failed requests and wrapped on 32-bit targets (defect R3-3).
 
 ## 5. Lock-free protocols
 
@@ -116,6 +129,7 @@ When a heap retires its exhausted `cur` page to the full list, it sets WATCH wit
 - `heap_flush` closes the stack (`NOTIFY_CLOSED`); `heap_attach` reopens it only if it is closed (CAS `NOTIFY_CLOSED` -> NULL). A heap recycled as it was (the fork child pools other threads' heaps unflushed) keeps its pending entries; resetting them unconditionally stranded those full pages (defect R2-2).
 - The remote free that brings the remote count to `unfull = max(1, cap/8)` clears WATCH in its CAS and pushes the page onto `oheap->notify`, a Treiber stack. While WATCH is set the chain may be non-empty; full-list pages are never collected, and detach drops WATCH in its own CAS.
 - `nstate` keeps the page on at most one stack.
+- A push to the shared heap also sets `g_shared_trim`: no owner of the shared heap would otherwise drain its stack (§4.1).
 - **Closing the stack.** `heap_flush` (thread exit, `soham_collect(1)`) closes the stack with a sentinel. A late push finds it closed and leaves the page's `nstate` clear, instead of leaving it set on a stack nobody drains, which would silence the page's later owners. `heap_attach` reopens the stack. A push to a heap that no longer owns the page is skipped. seq_cst fences on both sides close the store-buffering window between the drain (`nstate = 0`, then read `xfree`) and the freer (CAS `xfree`, then CAS `nstate`).
 - The owner's refill drains the stack (one exchange). It moves a page from full to avail only if the page is still owned by it, still on the full list, and not re-armed. Stale entries are ignored.
 - The local free that brings the local count to `unfull` disarms WATCH and moves the page to avail (`event_at = unfull` on the full list).
@@ -194,8 +208,8 @@ The fork-prepare handler takes them in exactly this order; the parent and child 
 
 ## 7. Fork
 
-- **prepare:** take every lock in the order above.
-- **parent:** release them.
+- **prepare:** save the calling thread's busy byte in its own TLS (`fork_busy`) and set `BUSY_IN`, then take every lock in the order above. The saved value is per thread because glibc runs the atfork handlers of threads that fork at the same time concurrently: with one process-wide copy (before 2026-10-21), a thread could restore another thread's busy byte, and a thread without a heap then crashed in the malloc fast path (defect R3-1).
+- **parent:** release the locks and restore the busy byte.
 - **child:** reset every lock. Every other thread's heap that was not inside an operation (its owner's `busy` byte is readable in the child) goes to the heap pool as-is, touching no page metadata, which keeps the child copy-on-write friendly. A heap that was inside an operation is leaked. The child re-seeds the RNG.
 
 ## 8. Deviations from IMPL_SPEC_v0 (and why)
@@ -225,9 +239,46 @@ The fork-prepare handler takes them in exactly this order; the parent and child 
 - **Growing a run with realloc copies.** There is no in-place growth.
 - **32-bit window placement** gives up after a 2×W over-map fails, even when aligned free gaps remain (about 18% of the heap left unused on armhf).
 - **The Windows lock wait** yields in a loop instead of WaitOnAddress.
+- **Small address-space limits.** Under a small `RLIMIT_AS` the reserved windows (at least 64 MiB each) and the granule map (sized for the whole 48-bit address space: 4 MiB with 64 MiB windows) take a large share of the limit. At `ulimit -v` 128 MiB about 60 MiB is usable, against about 100 MiB with glibc. Allocation still fails cleanly with ENOMEM (review finding R3-5).
+- **Free-list keys come from one generator stream per heap.** Each page's link key is the next output of the heap's xorshift64* generator, which is invertible, and the generator is seeded through an invertible mix. Learning one key therefore gives the heap's other keys. Link encoding raises the bar against blind corruption; it is not a guarantee against an attacker who can read free blocks (review finding R3-6, from code analysis). A keyed, non-invertible derivation of each key is planned.
+- **The shared heap keeps one current page per size class** that handlers used, and full pages with less than 1/8 free, until `soham_collect(1)` or `malloc_trim` (§4.1).
 - **A narrow notify race.** A freer that passes the owner check, then stalls while the page is detached, claimed and exhausted by another heap, can leave the page's `nstate` set on the old (live) heap's stack. The new owner is not notified until the old heap drains it or the page is freed locally.
 - **The fast paths are longer than mimalloc's**: about 45 instructions for malloc and 79 for free (callgrind, glibc-simple), against about 18 and 29. The difference is the security and safety work:
   - link encoding with an exact block check;
   - deterministic double-free and interior-free detection;
   - foreign-pointer detection through the granule map;
   - the busy byte for signal safety. `soham_malloc` and `soham_free` are 64-byte aligned: on the test machine glibc-simple ran 2.6–2.9 s aligned and 4.1 s unaligned with identical code, depending only on what the linker placed before them.
+
+## 10. Signal-handler safety: the guarantee and its limits
+
+**The guarantee.** A signal handler may call `malloc`, `calloc`, `realloc`, `reallocarray`, `free`, `free_sized`, `free_aligned_sized`, `aligned_alloc`, `posix_memalign`, `memalign`, `valloc`, `pvalloc`, `malloc_usable_size` and every global C++ `operator new`/`delete`, **including when it interrupted one of these calls on its own thread**, and the call neither deadlocks nor corrupts the allocator's state.
+
+**Mechanism** (§4, §4.1):
+
+- the busy byte marks a thread as inside the allocator;
+- a handler that finds it set allocates from the shared heap with every lock taken by trylock (trymode, invariant H3), or from the static arena;
+- it frees through the lock-free remote path, or defers frees of runs and solos to the thread's next allocator call.
+
+A handler therefore never waits for a lock that its own interrupted thread holds. Against other threads it never waits either: in trymode a lock that is taken makes the request fall back. A handler's call is lock-free (its CAS loops retry only when another thread made progress), not wait-free.
+
+**Evidence, not proof.** The guarantee is supported by targeted regression tests (`tests/regress/signal_*`, run by `tests/run_tests.sh`), by the SOHAM_DEBUG check of H3, by adversarial reviews, and by randomized signal storms (`tools/sigstorm`; campaign reports with trial counts and Wilson intervals under `docs/research-log/data/`). Storms are randomized and missed defect R2-1. No storm handler kind made aligned allocations until review round 3 (R3-2).
+
+**Limits:**
+
+1. **Allocation in a handler can fail with ENOMEM while memory is available.** This happens when the shared heap's lock, or a lock below it (page heap, class pool, solo table), is held at that moment, by another thread, a nested handler, a trim or a `fork` in progress, *and* the static arena cannot serve the request. The arena holds 384 KiB in all, is never reused, and serves alignments up to 4096 only. A handler must check for NULL, as with any allocator.
+2. **Deferred frees.** Frees of runs and solos (192 KiB and above) made in a handler that interrupted the allocator are deferred to the thread's next allocator call, or its exit. The memory is not reusable until then.
+3. **Large blocks in handler context:**
+   - `realloc` of a solo (32 MiB and above) returns NULL with ENOMEM when the solo table's lock is held;
+   - `malloc_usable_size` of a solo returns 0 in that case;
+   - `realloc` never resizes a solo in place in a handler: it copies.
+4. **Handler memory is held by the shared heap until it is trimmed** (on other threads' refills, at most once per purge interval) or flushed (`malloc_trim`, `soham_collect(1)`). One current page per size class stays (§4.1).
+5. **The handler must return normally.** Leaving a handler that interrupted the allocator by `siglongjmp`, by throwing or unwinding through the interrupted frame, or by `pthread_exit` leaves the thread marked busy. It may also leave allocator locks held, so other threads can then block. This is outside the guarantee, as it is for every allocator.
+6. **`fork()` from such a handler is not covered.** `fork` runs the allocator's atfork handlers, which take its locks with blocking waits, and the interrupted thread may hold one. POSIX.1-2024 no longer lists `fork` as async-signal-safe. A child created from a handler should call only async-signal-safe functions until it execs.
+7. **Introspection in such a handler reports nothing:**
+   - `soham_get_stats` returns -1;
+   - `soham_check_heap` returns 0;
+   - `soham_collect`, `malloc_trim` and `malloc_stats` do nothing;
+   - `mallinfo` and `mallinfo2` return zeros.
+8. **First use from a handler.** If a thread's first allocator call is made in a handler (one that did not interrupt the allocator), the handler attaches the thread's heap. That takes the heap lock (it waits only for other threads) and calls `pthread_setspecific`. If it is the process's first call, the handler also initialises the allocator, which calls `pthread_key_create`, `pthread_atfork`, `getrandom` and `mmap`. None of these is on POSIX's async-signal-safe list. They are safe on glibc and musl in practice, except when the handler interrupted the C library inside the same functions.
+9. **OS calls.** In a handler the allocator may call `mmap`, `munmap`, `mprotect` and `madvise` (window creation, commit growth, solos). These are thin system-call wrappers on Linux (glibc and musl) but are not on POSIX's async-signal-safe list. errno is preserved on success, and set to ENOMEM on failure.
+10. **C++ throwing `new` that fails in a handler** calls the `new_handler` or throws `std::bad_alloc`, and at its first failure may look up the C++ runtime with `dlsym`. Neither is async-signal-safe. Use the `nothrow` forms in handlers.

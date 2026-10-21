@@ -336,7 +336,7 @@ typedef struct {
   _Atomic uint8_t busy;    /* BUSY_IN | BUSY_NOHEAP; 0 = the fast paths may run */
   uint8_t state;
   uint8_t trymode;         /* handler context: every lock is a trylock (§5.3) */
-  uint8_t pad;
+  uint8_t fork_busy;       /* busy saved by this thread's fork_prepare (§8) */
   _Atomic(void *) deferred; /* frees deferred from handler context */
 } soham_tls_t;
 

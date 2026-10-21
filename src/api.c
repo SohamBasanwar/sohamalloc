@@ -389,28 +389,57 @@ static void *heap_alloc(heap_t *h, size_t n, bool *zero) {
   return solo_alloc(n, 0);
 }
 
+/* Size classes whose block size is a multiple of align are aligned,
+ * because pages start on slice boundaries (plan §5.7.4).  The smallest such
+ * class that holds n and is served from bins, or SOHAM_NCLASSES. */
+static unsigned aligned_class(size_t align, size_t n) {
+  if (align > g_geo.S || n > SOHAM_MAX_CLASS) return SOHAM_NCLASSES;
+  size_t want = n < align ? align : n;
+  for (unsigned c = size_class(want); c < SOHAM_NCLASSES; c++) {
+    if (g_class_size[c] % align == 0) return g_class_kind[c] == KIND_RUN ? SOHAM_NCLASSES : c;
+  }
+  return SOHAM_NCLASSES;
+}
+
+/* Allocate n bytes aligned to align (a power of two above 16) from heap h
+ * (busy held). */
+static void *heap_alloc_aligned(heap_t *h, size_t align, size_t n, bool *zero) {
+  *zero = false;
+  unsigned c = aligned_class(align, n);
+  if (c < SOHAM_NCLASSES) return bin_alloc(h, c);
+  if (align <= g_geo.H && n < SOHAM_SOLO_MIN) return run_alloc(n, align > g_geo.S, zero);
+  *zero = true;
+  return solo_alloc(n, align);
+}
+
+/* A signal handler interrupted the allocator on this thread: use the
+ * shared heap if its lock is free, with every lock below it taken by
+ * trylock only (no handler ever waits); otherwise the static arena.
+ * align is 16, or a power of two above it (aligned allocation). */
+static SOHAM_NOINLINE void *handler_alloc(size_t n, size_t align, bool *zero) {
+  soham_tls_t *t = &t_tls;
+  void *p = NULL;
+  *zero = false;
+  if (atomic_load_explicit(&g_init_state, memory_order_acquire) == 2 && !t->trymode &&
+      soham_trylock(&g_shared_lock)) {
+    t->trymode = 1;
+    signal_fence();
+    p = align <= 16 ? heap_alloc(g_shared, n, zero) : heap_alloc_aligned(g_shared, align, n, zero);
+    if (p) atomic_store_explicit(&g_shared_trim, 1, memory_order_relaxed);
+    signal_fence();
+    t->trymode = 0;
+    soham_unlock(&g_shared_lock);
+  }
+  if (!p) { *zero = false; p = bss_alloc(n, align); }
+  if (!p) errno = ENOMEM;
+  return p;
+}
+
 /* Every allocation that misses the fast path ends up here. */
 static SOHAM_NOINLINE void *alloc_slow(size_t n, bool *zero) {
   soham_tls_t *t = &t_tls;
   *zero = false;
-  if (unlikely(atomic_load_explicit(&t->busy, memory_order_relaxed) & BUSY_IN)) {
-    /* A signal handler interrupted the allocator on this thread: use the
-     * shared heap if its lock is free, with every lock below it taken by
-     * trylock only (no handler ever waits); otherwise the static arena. */
-    void *p = NULL;
-    if (atomic_load_explicit(&g_init_state, memory_order_acquire) == 2 && !t->trymode &&
-        soham_trylock(&g_shared_lock)) {
-      t->trymode = 1;
-      signal_fence();
-      p = heap_alloc(g_shared, n, zero);
-      signal_fence();
-      t->trymode = 0;
-      soham_unlock(&g_shared_lock);
-    }
-    if (!p) { *zero = false; p = bss_alloc(n, 16); }
-    if (!p) errno = ENOMEM;
-    return p;
-  }
+  if (unlikely(atomic_load_explicit(&t->busy, memory_order_relaxed) & BUSY_IN)) return handler_alloc(n, 16, zero);
   if (unlikely(!t->heap) && !thread_prepare(t)) {
     void *p = bss_alloc(n, 16);
     if (!p) errno = ENOMEM;
@@ -425,6 +454,7 @@ static SOHAM_NOINLINE void *alloc_slow(size_t n, bool *zero) {
   } else {
     soham_lock(&g_shared_lock);
     p = heap_alloc(g_shared, n, zero);
+    if (p) atomic_store_explicit(&g_shared_trim, 1, memory_order_relaxed);
     soham_unlock(&g_shared_lock);
   }
   busy_leave(t);
@@ -658,26 +688,20 @@ static void *alloc_aligned(size_t align, size_t n) {
   if (n == 0) n = 1;
   if (n > (size_t)PTRDIFF_MAX) { errno = ENOMEM; return NULL; }
   soham_tls_t *t = &t_tls;
-  if (unlikely(atomic_load_explicit(&t->busy, memory_order_relaxed) & BUSY_IN) ||
-      (unlikely(!t->heap) && !thread_prepare(t))) {
+  bool zero;
+  /* Handler context: the shared heap, as for malloc (alloc_slow). */
+  if (unlikely(atomic_load_explicit(&t->busy, memory_order_relaxed) & BUSY_IN)) return handler_alloc(n, align, &zero);
+  if (unlikely(!t->heap) && !thread_prepare(t)) {
     void *p = bss_alloc(n, align);
     if (!p) errno = ENOMEM;
     return p;
   }
-  /* Size classes whose block size is a multiple of align are aligned,
-   * because pages start on slice boundaries (plan §5.7.4). */
-  if (align <= g_geo.S && n <= SOHAM_MAX_CLASS) {
-    size_t want = n < align ? align : n;
-    for (unsigned c = size_class(want); c < SOHAM_NCLASSES; c++) {
-      if (g_class_size[c] % align == 0) {
-        if (g_class_kind[c] == KIND_RUN) break;
-        void *p = soham_malloc(g_class_size[c]);
-        SOHAM_ASSERT(!p || ((uintptr_t)p & (align - 1)) == 0);
-        return p;
-      }
-    }
+  unsigned c = aligned_class(align, n);
+  if (c < SOHAM_NCLASSES) {
+    void *p = soham_malloc(g_class_size[c]);
+    SOHAM_ASSERT(!p || ((uintptr_t)p & (align - 1)) == 0);
+    return p;
   }
-  bool zero;
   void *p = NULL;
   if (atomic_load_explicit(&t->deferred, memory_order_relaxed)) deferred_drain(t);
   busy_enter(t);
@@ -740,6 +764,8 @@ SOHAM_API void soham_collect(int force) {
     heap_flush(t->heap);
     atomic_store_explicit(&t->heap->notify, NULL, memory_order_release);   /* still attached */
   }
+  if (force) shared_flush();
+  else shared_trim();
   ph_purge(force ? PURGE_ALL : PURGE_DECAY);
   busy_leave(t);
 }
@@ -895,12 +921,13 @@ SOHAM_API const char *soham_version(void) { return SOHAMALLOC_VERSION; }
 /* Fork (§8)                                                               */
 /* ---------------------------------------------------------------------- */
 
-static uint8_t g_fork_saved_busy;
-
 static void fork_prepare(void) {
   soham_tls_t *t = &t_tls;
-  g_fork_saved_busy = atomic_load_explicit(&t->busy, memory_order_relaxed);
-  atomic_store_explicit(&t->busy, (uint8_t)(g_fork_saved_busy | BUSY_IN), memory_order_relaxed);
+  /* Per thread: glibc runs the atfork handlers of concurrently forking
+   * threads at the same time, so one saved value for the process would let a
+   * thread restore another thread's busy byte. */
+  t->fork_busy = atomic_load_explicit(&t->busy, memory_order_relaxed);
+  atomic_store_explicit(&t->busy, (uint8_t)(t->fork_busy | BUSY_IN), memory_order_relaxed);
   signal_fence();
   soham_lock(&g_heap_lock);
   soham_lock(&g_shared_lock);
@@ -918,7 +945,7 @@ static void fork_parent(void) {
   soham_unlock(&g_shared_lock);
   soham_unlock(&g_heap_lock);
   signal_fence();
-  atomic_store_explicit(&t_tls.busy, g_fork_saved_busy, memory_order_relaxed);
+  atomic_store_explicit(&t_tls.busy, t_tls.fork_busy, memory_order_relaxed);
 }
 
 static void fork_child(void) {
@@ -948,7 +975,7 @@ static void fork_child(void) {
   if (t->heap) t->heap->rng ^= mix64(r) | 1;
   if (t->heap) t->heap->busy_ptr = &t->busy;
   signal_fence();
-  atomic_store_explicit(&t->busy, g_fork_saved_busy, memory_order_relaxed);
+  atomic_store_explicit(&t->busy, t->fork_busy, memory_order_relaxed);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -967,6 +994,8 @@ SOHAM_API unsigned soham_internal_class_cap(unsigned c) { ensure_init(); return 
 SOHAM_API uintptr_t soham_internal_link_enc(uintptr_t key, uintptr_t next, uintptr_t addr) { return link_enc(key, next, addr); }
 SOHAM_API uintptr_t soham_internal_link_dec(uintptr_t key, uintptr_t stored, uintptr_t addr) { return link_dec(key, stored, addr); }
 SOHAM_API int soham_internal_security_tier(void) { ensure_init(); return g_geo.secure ? 1 : 0; }
+SOHAM_API void *soham_internal_bss_alloc(size_t n, size_t align) { ensure_init(); return bss_alloc(n, align); }
+SOHAM_API size_t soham_internal_bss_top(void) { return atomic_load_explicit(&g_bss_top, memory_order_relaxed); }
 
 SOHAM_API void soham_internal_geometry(struct soham_internal_geometry *out) {
   ensure_init();

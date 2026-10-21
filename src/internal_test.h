@@ -76,6 +76,13 @@ void soham_internal_geometry(struct soham_internal_geometry *out);
 /* Security tier in force: 0 = S0, 1 = S1 (SOHAMALLOC_SECURE=1). */
 int soham_internal_security_tier(void);
 
+/* Static arena (docs/IMPL_SPEC_v0.md §5.3), for the bounded-counter test:
+ * one bump allocation of n bytes aligned to align (NULL when it does not
+ * fit), and the current bump offset.  They use the arena up: tests only. */
+#define SOHAM_INTERNAL_BSS_ARENA_SIZE ((size_t)384 * 1024)
+void *soham_internal_bss_alloc(size_t n, size_t align);
+size_t soham_internal_bss_top(void);
+
 #ifdef __cplusplus
 }
 #endif

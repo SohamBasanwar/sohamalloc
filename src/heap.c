@@ -50,6 +50,7 @@ static void *meta_alloc(size_t n) {
 /* ---------------------------------------------------------------------- */
 
 #define BSS_ARENA_SIZE (384 * KiB)
+_Static_assert(BSS_ARENA_SIZE == SOHAM_INTERNAL_BSS_ARENA_SIZE, "internal_test.h states the arena size");
 static char g_bss_arena[BSS_ARENA_SIZE] __attribute__((aligned(64)));
 static _Atomic size_t g_bss_top;
 static _Atomic size_t g_bss_freed;
@@ -63,8 +64,14 @@ static void *bss_alloc(size_t n, size_t align) {
   if (align < 16) align = 16;
   if (n > BSS_ARENA_SIZE || align > 4096) return NULL;
   size_t need = ((n + 15) & ~(size_t)15) + 16 + align;
-  size_t off = atomic_fetch_add_explicit(&g_bss_top, need, memory_order_relaxed);
-  if (off + need > BSS_ARENA_SIZE) return NULL;
+  if (need > BSS_ARENA_SIZE) return NULL;
+  /* The counter only moves when the block fits, so it never passes the
+   * arena (a counter that grew on failed requests wrapped on 32-bit). */
+  size_t off = atomic_load_explicit(&g_bss_top, memory_order_relaxed);
+  do {
+    if (off > BSS_ARENA_SIZE - need) return NULL;
+  } while (!atomic_compare_exchange_weak_explicit(&g_bss_top, &off, off + need, memory_order_relaxed,
+                                                  memory_order_relaxed));
   uintptr_t p = ((uintptr_t)g_bss_arena + off + 16 + align - 1) & ~(uintptr_t)(align - 1);
   ((size_t *)p)[-1] = n;
   return (void *)p;
@@ -438,6 +445,10 @@ static void pending_drain(void) {
  * keep nstate set and silence every later owner's notifications. */
 #define NOTIFY_CLOSED ((rec_t *)(uintptr_t)1)
 
+/* The shared heap may have pages for shared_trim() to release: set by every
+ * allocation from it and every notification to it (see shared_trim). */
+static _Atomic uint8_t g_shared_trim;
+
 static void notify_push(heap_t *h, rec_t *r) {
   if (atomic_load_explicit(&r->r.owner, memory_order_relaxed) != h->tag) return;   /* moved on */
   uint32_t z = 0;
@@ -447,6 +458,7 @@ static void notify_push(heap_t *h, rec_t *r) {
     if (old == NOTIFY_CLOSED) { atomic_store_explicit(&r->x.nstate, 0, memory_order_release); return; }
     r->x.nnext = old;
   } while (!atomic_compare_exchange_weak_explicit(&h->notify, &old, r, memory_order_release, memory_order_relaxed));
+  if (h->is_shared) atomic_store_explicit(&g_shared_trim, 1, memory_order_relaxed);
 }
 
 /* Owner: move notified full pages back to the avail list. */
@@ -651,10 +663,68 @@ static void bin_trim_avail(heap_t *h, bin_t *bin) {
   }
 }
 
+/* The shared heap has no running owner, so no refill of its own releases
+ * the pages that handler-context allocations filled and other threads then
+ * freed.  Any thread does it here (busy held, not in trymode), under the
+ * shared lock taken by trylock: notified full pages move to the avail list,
+ * and avail pages whose blocks are all free are unlinked, then released
+ * after the unlock, so a handler that finds the lock taken (and falls back
+ * to the static arena) waits on nothing slow.  The current page of each
+ * class stays.  g_shared_trim is cleared once no avail page and no
+ * notification is left; full pages with less than 1/8 free stay, as on any
+ * heap's full list. */
+static void shared_trim(void) {
+  heap_t *h = g_shared;
+  if (!soham_trylock(&g_shared_lock)) return;
+  notify_drain(h);
+  rec_t *rel = NULL;
+  bool keep = false;
+  for (unsigned c = 0; c < SOHAM_NCLASSES; c++) {
+    bin_t *bin = &h->bins[c];
+    for (rec_t *r = bin->avail, *nx; r; r = nx) {
+      nx = r->o.lnext;
+      uint32_t remote = xf_cnt(atomic_load_explicit(&r->x.xfree, memory_order_acquire));
+      if (o_cnt(r) + remote != r->o.prov) { keep = true; continue; }
+      list_unlink(bin, r);
+      r->o.lnext = rel;
+      rel = r;
+    }
+  }
+  if (!keep && !atomic_load_explicit(&h->notify, memory_order_relaxed))
+    atomic_store_explicit(&g_shared_trim, 0, memory_order_relaxed);
+  soham_unlock(&g_shared_lock);
+  /* Off the heap's lists: no other thread reaches these pages, and with
+   * every block free no remote free can arrive.  collect() walks the remote
+   * chain at its exact length first, as resolve() does before a release. */
+  while (rel) {
+    rec_t *nx = rel->o.lnext;
+    rel->o.lnext = NULL;
+    collect(rel);
+    page_release(rel);
+    rel = nx;
+  }
+}
+
+/* Every 64th refill of a thread heap: trim the shared heap when it may have
+ * pages to release, at most once per purge interval across all threads. */
+static _Atomic uint64_t g_shared_trim_ns;
+
+static void shared_trim_tick(void) {
+  if (!atomic_load_explicit(&g_shared_trim, memory_order_relaxed)) return;
+  uint64_t now = soham_os_now_ns();
+  uint64_t last = atomic_load_explicit(&g_shared_trim_ns, memory_order_relaxed);
+  if (now - last < g_cfg.purge_interval_ns) return;
+  if (!atomic_compare_exchange_strong_explicit(&g_shared_trim_ns, &last, now, memory_order_relaxed, memory_order_relaxed)) return;
+  shared_trim();
+}
+
 static SOHAM_NOINLINE void *bin_refill(heap_t *h, unsigned c) {
   if (likely(!t_tls.trymode)) {
     pending_drain();
-    if (unlikely((++h->refills & 63) == 0)) ph_decay_tick();
+    if (unlikely((++h->refills & 63) == 0)) {
+      ph_decay_tick();
+      if (!h->is_shared) shared_trim_tick();
+    }
   }
   bin_t *bin = &h->bins[c];
   rec_t *r = bin->cur;
@@ -727,6 +797,15 @@ static void heap_flush(heap_t *h) {
     while (bin->full) { rec_t *r = bin->full; list_unlink(bin, r); page_detach(r); }
   }
   while (h->nspares) page_release(h->spares[--h->nspares]);
+}
+
+/* soham_collect(1), malloc_trim: detach every page of the shared heap,
+ * which stays in use (busy held). */
+static void shared_flush(void) {
+  soham_lock(&g_shared_lock);
+  heap_flush(g_shared);
+  atomic_store_explicit(&g_shared->notify, NULL, memory_order_release);
+  soham_unlock(&g_shared_lock);
 }
 
 /* ---------------------------------------------------------------------- */
