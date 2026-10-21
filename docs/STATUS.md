@@ -57,9 +57,17 @@ The limits of the signal-safety guarantee are documented in `docs/IMPLEMENTATION
 - **Data:** `bench/out/sigstorm-campaign1/` (git-ignored; copy to `docs/research-log/data/sigstorm-campaign1/` when it finishes). Log: `bench/out/sigstorm-campaign1.log`.
 - **If interrupted:** `SOHAM_LIB=$PWD/bench/out/sigstorm-campaign1/libsohamalloc-064d208.so python3 tools/sigstorm/run.py --resume bench/out/sigstorm-campaign1 --jobs 5`
 
+**Review round 4** of `fd735dd`, started 21:4x UTC as workflow run `wf_a26b2874-42a`:
+
+- **Design.** Five lens reviewers (signal reentrancy, concurrency, lifecycle/fork/init, API and memory return, portability and checks). Each finding gets two refuters (reproduction, code reasoning), plus a tie-breaker on a split. A completeness critic then assigns up to four gap reviewers, whose findings are verified the same way.
+- **Where its work is.** Frozen libraries: `<session scratchpad>/review4/libs/`. Reviewers' working directories: `<session scratchpad>/review4/<lens>/`, under `/tmp/claude-1000/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/scratchpad/`. Journal (completed agents) and transcripts: `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/subagents/workflows/wf_a26b2874-42a/`.
+- **If interrupted:**
+  - **Same session:** `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round4-wf_a26b2874-42a.js", resumeFromRunId: "wf_a26b2874-42a"})`.
+  - **New session:** salvage the findings from `journal.jsonl` and the agent transcripts. Save them to `docs/research-log/data/review4/` (raw notes stay out of git, as in round 3).
+
 ## Next
 
-1. **Review round 4** on this commit. Repeat rounds until none confirms a critical or major finding (gate 2).
+1. **Review round 4** on this commit (running, see above). Repeat rounds until none confirms a critical or major finding (gate 2).
 2. **Campaign.** Finish campaign 1. Rerun sohamalloc's rows on the fixed code. Add an `aligned` handler kind to sigstorm (round 3 showed the gap) and run it for all allocators. Copy the data to `docs/research-log/data/`.
 3. **Busy-byte cost** measurement, then the tuned benchmark campaign: ≥10 repetitions with confidence intervals, on a quiet machine with `sudo tools/bench-host.sh tune`.
 4. **Research log.** Complete `02-experiments`, `04-design-decisions` and `06-paper-assessment`, and extend `01-timeline` past 2026-10-19.
