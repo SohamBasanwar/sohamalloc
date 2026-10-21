@@ -152,3 +152,32 @@ All five confirmed defects are fixed, each with a regression test that fails on 
   2. Fix them with fail-before/pass-after tests, then run the matrix (`/sohamalloc-verify`), commit and push.
   3. Rerun sohamalloc's campaign rows on the fixed code.
   4. Copy the campaign data to `docs/research-log/data/`.
+
+### Checkpoint (2026-10-21 16:10 CDT): review-round-3 fixes in progress (uncommitted)
+
+The session was repeatedly cut off by the model's automated safeguards. **Continue in a fresh session.** The work in progress is in the working tree, not committed, because allocator changes are committed only after `/sohamalloc-verify` passes.
+
+**Applied, not yet built or tested:**
+- **F1:** each thread saves its own busy byte across `fork()` (`soham_tls_t.fork_busy` replaces the global `g_fork_saved_busy`).
+- **F3:** the static-arena counter moves only when a block fits (CAS loop in `bss_alloc`).
+- **Test hooks:** `soham_internal_bss_alloc` and `soham_internal_bss_top`.
+
+**Still to do:**
+- **F2:** aligned allocations in handler context should use the shared heap under its trylock, as `alloc_slow` does.
+- **F4:** flush the shared heap from `soham_collect` and from the periodic refill tick.
+- Register the four new tests in `tests/run_tests.sh`, then run `/sohamalloc-verify` and commit.
+
+**New tests**, uncommitted, in `tests/regress/`:
+
+| Test | On the unfixed code |
+|---|---|
+| `fork_concurrent_busy.c` | Did **not** reproduce the race on this machine (0 failures in 3×1000 rounds): it is kept as a guard |
+| `signal_aligned_enomem.c` | Fails: ~16k ENOMEM per run |
+| `signal_shared_release.c` | Fails: 16 MiB stays cached |
+| `bss_bounded.c` | Fails: the counter passes the arena |
+
+The before-results are in `docs/research-log/data/regress-before-after/2026-10-21-review3-before.txt`.
+
+**Leave out of git:** `docs/research-log/data/review3/repros/` and `review3-results.json`, which hold the reviewers' raw notes. The ledger gets a neutral summary.
+
+**Campaign:** the sigstorm campaign may need `--resume` (see the earlier checkpoint).

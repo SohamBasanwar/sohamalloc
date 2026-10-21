@@ -1,0 +1,41 @@
+# Review round 3 regression tests on the unfixed code (c1a9791 allocator + the two arena test hooks), 2026-10-21T20:51:55Z
+# library: /tmp/claude-1000/-home-sohambasanwar-sohamalloc/d02fd376-691d-4e43-9867-b889f9bfad80/scratchpad/build-before/libsohamalloc.so (fbfa4e1266ef4912); host 7.0.0-38-generic
+## fork_concurrent_busy run 1
+1000 forking threads: 0 children failed, 1000 ok
+PASS
+exit=0
+## fork_concurrent_busy run 2
+1000 forking threads: 0 children failed, 1000 ok
+PASS
+exit=0
+## fork_concurrent_busy run 3
+1000 forking threads: 0 children failed, 1000 ok
+PASS
+exit=0
+## signal_aligned_enomem run 1
+44592 handler calls, 16111 NULL, 0 misaligned
+FAIL
+exit=1
+## signal_aligned_enomem run 2
+44936 handler calls, 16601 NULL, 0 misaligned
+FAIL
+exit=1
+## signal_aligned_enomem run 3
+44766 handler calls, 15450 NULL, 0 misaligned
+FAIL
+exit=1
+## signal_shared_release run 1
+handler allocated 8192 of 8192 blocks; cached in heaps (KiB): allocated 127, freed 16511, after activity 16703, after soham_collect(1) 16384
+FAIL: freed handler memory stays cached
+exit=1
+## signal_shared_release run 2
+handler allocated 8192 of 8192 blocks; cached in heaps (KiB): allocated 127, freed 16511, after activity 16703, after soham_collect(1) 16384
+FAIL: freed handler memory stays cached
+exit=1
+## signal_shared_release run 3
+handler allocated 8192 of 8192 blocks; cached in heaps (KiB): allocated 127, freed 16511, after activity 16703, after soham_collect(1) 16384
+FAIL: freed handler memory stays cached
+exit=1
+## bss_bounded run 1
+FAIL: counter 395760 beyond the arena after filling
+exit=1
