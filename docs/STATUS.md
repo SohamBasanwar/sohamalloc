@@ -114,3 +114,14 @@ All five confirmed defects are fixed, each with a regression test that fails on 
     `Workflow({scriptPath: ".../workflows/scripts/sohamalloc-review-round3-wf_107e841a-152.js", resumeFromRunId: "wf_107e841a-152"})`.
     Completed agents are reused.
   - **New session:** salvage the findings from journal.jsonl and the agent transcripts.
+
+### Checkpoint (2026-10-21 12:45 CDT): sigstorm campaign 1 running
+
+- **Run.** `tools/sigstorm/run.py --trials 30 --seconds 5 --threads 1,2,4 --jobs 5 --out bench/out/sigstorm-campaign1`, started 17:41 UTC under `nice -n 10`.
+  - 9 allocators × 3 thread counts × 8 handler kinds (including the controls `nosignal` and `none`) × 30 trials = 6480 trials.
+  - Tools at commit 85f3b78.
+  - sohamalloc is the frozen copy `bench/out/sigstorm-campaign1/libsohamalloc-064d208.so` of the c1a9791 code, sha256 `303a23d1…`.
+  - Its rows are rerun on the final code after the review-round-3 fixes. The other allocators' rows stand.
+- **Where its data is.** `bench/out/sigstorm-campaign1/` (results.csv, appended per trial; env.txt; args.txt), with the log in `bench/out/sigstorm-campaign1.log`. `bench/out/` is git-ignored: copy the text files to `docs/research-log/data/sigstorm-campaign1/` when it finishes, or at a checkpoint.
+- **If interrupted:** `SOHAM_LIB=$PWD/bench/out/sigstorm-campaign1/libsohamalloc-064d208.so python3 tools/sigstorm/run.py --resume bench/out/sigstorm-campaign1 --jobs 5`. It skips completed trials and records the resumption in env.txt.
+- **Concurrent load.** Review round 3 runs at the same time. The outcome measure (stall = no progress for 2 s) is insensitive to CPU contention. The `inside` exposure counts and the load averages in env.txt show the load.
