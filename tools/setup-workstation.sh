@@ -46,9 +46,9 @@ PKGS=(
   build-essential cmake git clang gdb valgrind curl ca-certificates time
   # analysis and plots for the research log
   python3 python3-numpy python3-scipy python3-matplotlib
-  # allocators compared in the benchmarks
-  libjemalloc2 libjemalloc-dev libmimalloc2.0 libmimalloc-dev
-  libtcmalloc-minimal4t64 libgoogle-perftools-dev
+  # allocators compared in the benchmarks (runtime packages added below:
+  # their names change between releases)
+  libjemalloc-dev libmimalloc-dev libgoogle-perftools-dev
   # application benchmarks
   redis-server redis-tools sqlite3
   # cross-platform verification: aarch64, armhf (qemu), musl, Windows (mingw + wine)
@@ -58,6 +58,12 @@ PKGS=(
   # machine topology and noise checks
   numactl hwloc stress-ng
 )
+# First package of each group that this release has (Ubuntu 24.04: libmimalloc2.0,
+# 26.04: libmimalloc3).
+first_available() { for p in "$@"; do apt-cache show "$p" >/dev/null 2>&1 && { echo "$p"; return; }; done; }
+for group in "libjemalloc2" "libmimalloc3 libmimalloc2.0" "libtcmalloc-minimal4t64 libtcmalloc-minimal4"; do
+  p=$(first_available $group); [ -n "$p" ] && PKGS+=("$p") || echo "warning: none of '$group' is available" >&2
+done
 if [ $WSL = 0 ]; then
   # perf for the running kernel (not available for the WSL kernel)
   PKGS+=(linux-tools-common linux-tools-generic)
@@ -100,7 +106,7 @@ if [ "$DRY" = 0 ]; then
         cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true
         cat /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true
         echo "## compilers"; gcc --version | head -1; clang --version | head -1; cmake --version | head -1
-        echo "## allocators"; dpkg -l libjemalloc2 libmimalloc2.0 libtcmalloc-minimal4t64 2>/dev/null | tail -n +6
+        echo "## allocators"; dpkg -l 'libjemalloc[0-9]*' 'libmimalloc[0-9]*' 'libtcmalloc-minimal*' 2>/dev/null | grep '^ii' 
         echo "## kernel command line"; cat /proc/cmdline
     } > "$OUT"
     echo "wrote $OUT"

@@ -183,8 +183,9 @@ fi
 # ---------------------------------------------------------------- allocators
 phase "allocators"
 LIBDIR=/usr/lib/x86_64-linux-gnu
-for a in "jemalloc $LIBDIR/libjemalloc.so.2" "mimalloc $LIBDIR/libmimalloc.so.2" \
-         "tcmalloc $LIBDIR/libtcmalloc_minimal.so.4" "sohamalloc $ROOT/build/libsohamalloc.so"; do
+newest() { ls "$LIBDIR"/"$1".so.[0-9]* 2>/dev/null | grep -E '\.so\.[0-9]+$' | sort -t. -k3 -n | tail -1; }
+for a in "jemalloc $(newest libjemalloc)" "mimalloc $(newest libmimalloc)" \
+         "tcmalloc $(newest libtcmalloc_minimal)" "sohamalloc $ROOT/build/libsohamalloc.so"; do
   set -- $a
   if [ -f "$2" ]; then note "allocator $1: $2"; else note "allocator $1 MISSING: $2"; fi
 done
