@@ -1,0 +1,19 @@
+# Regression tests for the review-round-2 defects, run against the UNFIXED code
+# Library: build of commit ee1f70d (src/ unchanged up to f5e37a2)
+# Machine: Core Ultra 9 185H, Ubuntu 26.04.1, kernel 7.0.0-38-generic, gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0
+# Date: 2026-10-21T06:05:59Z
+
+## tests/regress/invalid_frees.c  (new cases: orphan page A,B,A; orphan page full free)
+orphan page A,B,A      WRONG (exited)      <- double free not detected, page with a live block released
+orphan page full free  ok (exited)
+(all other cases ok; overall FAIL, exit 1)
+
+## tests/regress/signal_trim_deadlock.c, 3 runs
+STALL: main thread made no progress for 4 s (17678 iterations, 531 handler calls)   exit 3
+STALL: main thread made no progress for 4 s (16382 iterations, 513 handler calls)   exit 3
+STALL: main thread made no progress for 4 s (17558 iterations, 531 handler calls)   exit 3
+
+## tests/regress/fork_notify_reuse.c, 3 runs
+child: 540 of 6000 new blocks reuse freed blocks of the pooled heap   FAIL exit 1
+child: 540 of 6000 new blocks reuse freed blocks of the pooled heap   FAIL exit 1
+child: 540 of 6000 new blocks reuse freed blocks of the pooled heap   FAIL exit 1

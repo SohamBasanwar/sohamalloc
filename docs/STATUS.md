@@ -55,3 +55,33 @@ tests/run_tests.sh --lib build/libsohamalloc.so      # full suite
 tests/preload_smoke.sh --lib build/libsohamalloc.so  # real programs
 bench/build_bench.sh && bench/run_bench.sh --reps 3  # full benchmark (~15 min)
 ```
+
+## In progress (2026-10-21, laptop session) -- READ THIS FIRST WHEN RESUMING
+
+Review round 2 (workflow run wf_d0487d5f-fa6) was interrupted once and resumed;
+it may not have finished. Three defects are CONFIRMED with reproducers
+(data: docs/research-log/data/review2/, before-results:
+docs/research-log/data/regress-before-after/2026-10-21-review2-before.txt):
+
+1. Handler-context deadlock (critical): bin_refill -> bin_trim_avail ->
+   page_release -> ph_free takes the blocking g_ph.lock in trymode.
+   Fix: in bin_refill, call bin_trim_avail only when !t_tls.trymode; audit
+   every soham_lock reachable in trymode; SOHAM_DEBUG: abort in soham_lock
+   when t_tls.trymode is set.  Test: tests/regress/signal_trim_deadlock.c
+   (old code: STALL 3/3).
+2. Notify-stack stranding after fork (major): heap_attach stores NULL into
+   h->notify unconditionally.  Fix: CAS NOTIFY_CLOSED -> NULL only.
+   Test: tests/regress/fork_notify_reuse.c (old code: 540/6000 reused, FAIL).
+3. Orphan-page remote double free A,B,A (critical): resolve()'s cnt==cap
+   branch releases the page without walking the chain.  Fix: after the CAS
+   to 0 (and pool_unlink), merge_chain(r, xf_ptr(x), cnt - r->x.folded)
+   before page_release.  Test: new cases in tests/regress/invalid_frees.c
+   (old code: "orphan page A,B,A WRONG (exited)").
+4. TSan: soham_get_stats reads page-heap counters without g_ph.lock
+   (api.c:788) -- read them under the lock.
+
+Reviewer's proposed diff for 1 and 2: docs/research-log/data/review2/reviewer-proposed-fixes.diff.
+The three new tests are NOT yet registered in tests/run_tests.sh (they fail
+until the fixes land).  Next steps follow the directive: apply fixes,
+register the tests, full matrix, sigstorm for sohamalloc (add a "churn"
+handler kind that exercises medium-page trim paths), then the campaigns.

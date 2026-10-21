@@ -10,6 +10,15 @@
  * Each case runs in a child process.  Bad cases must die with SIGABRT;
  * good cases must exit 0.
  * Status: fixed (owned_free / owned_free_check, block_ok on every free).
+ *
+ * Orphan cases (added 2026-10-21): a thread allocates A, B and L and exits,
+ * so its page is detached and queued in its class pool; then the main
+ * thread frees A, B, A.  The remote count reaches the page's capacity and
+ * resolve() released the page without walking the chain, although L was
+ * still live: no abort, and a later malloc returned L.  Found by the
+ * correctness review of 2026-10-21.  Fixed: resolve() validates the chain
+ * (merge_chain, exact length) before releasing; the legitimate full free
+ * of A, B and L must still pass.
  */
 #define _GNU_SOURCE 1
 #include <signal.h>
@@ -69,6 +78,28 @@ static void bad_remote_then_local(void) {
     free(a);            /* a is on its page's remote free list */
 }
 
+/* 3000 bytes: class 3072, 21 blocks per page, a class nothing else here
+ * uses, so the exiting thread's page holds exactly A, B and L. */
+#define OSZ 3000
+static char *oa, *ob, *ol;
+static void *orphan_alloc_fn(void *arg) {
+    (void)arg;
+    oa = malloc(OSZ); ob = malloc(OSZ); ol = malloc(OSZ);
+    memset(ol, 'L', OSZ);
+    return NULL;                 /* thread exit: the page is orphaned, then queued */
+}
+static void orphan_setup(void) {
+    pthread_t t;
+    pthread_create(&t, NULL, orphan_alloc_fn, NULL);
+    pthread_join(t, NULL);
+}
+static void bad_orphan_aba(void) { orphan_setup(); free(oa); free(ob); free(oa); }
+static void good_orphan_full(void) {
+    orphan_setup();
+    free(oa); free(ob); free(ol);    /* the page becomes completely free: released */
+    for (int i = 0; i < 64; i++) sink = malloc(OSZ);
+}
+
 static int run(const char *name, void (*fn)(void), int expect_abort)
 {
     fflush(stdout);
@@ -95,6 +126,8 @@ int main(void)
     ok &= run("interior free", bad_interior, 1);
     ok &= run("interior free 3000", bad_interior_big, 1);
     ok &= run("remote, then local", bad_remote_then_local, 1);
+    ok &= run("orphan page A,B,A", bad_orphan_aba, 1);
+    ok &= run("orphan page full free", good_orphan_full, 0);
     ok &= run("zeroed block", good_zeroed, 0);
     ok &= run("untouched blocks", good_untouched, 0);
     ok &= run("link look-alike", good_link_lookalike, 0);

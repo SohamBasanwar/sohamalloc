@@ -1,0 +1,24 @@
+diff -u /home/sohambasanwar/sohamalloc/src/api.c srcfix/src/api.c
+--- /home/sohambasanwar/sohamalloc/src/api.c	2026-10-20 20:26:33.850985524 -0500
++++ srcfix/src/api.c	2026-10-21 00:33:47.054212854 -0500
+@@ -279,7 +279,7 @@
+   else h = heap_create_locked();
+   if (h) {
+     h->live = 1; h->pool_next = NULL; h->busy_ptr = &t->busy; g_heaps_live++;
+-    atomic_store_explicit(&h->notify, NULL, memory_order_release);   /* reopen (heap_flush) */
++    { rec_t *cl = NOTIFY_CLOSED; atomic_compare_exchange_strong_explicit(&h->notify, &cl, NULL, memory_order_acq_rel, memory_order_relaxed); }   /* reopen only a closed stack */
+   }
+   soham_unlock(&g_heap_lock);
+   if (!h) return NULL;
+diff -u /home/sohambasanwar/sohamalloc/src/heap.c srcfix/src/heap.c
+--- /home/sohambasanwar/sohamalloc/src/heap.c	2026-10-20 20:26:33.852526067 -0500
++++ srcfix/src/heap.c	2026-10-21 00:41:02.152960027 -0500
+@@ -665,7 +665,7 @@
+   while (bin->avail) {
+     rec_t *a = bin->avail;
+     list_unlink(bin, a);
+-    if (page_ready(a)) { bin->cur = a; bin_trim_avail(h, bin); return page_pop(a); }
++    if (page_ready(a)) { bin->cur = a; if (likely(!t_tls.trymode)) bin_trim_avail(h, bin); return page_pop(a); }
+     if (!page_retire_full(bin, a)) { bin->cur = a; return page_pop(a); }
+   }
+   /* Shared pages, then a fresh page. */
