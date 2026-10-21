@@ -204,6 +204,7 @@ stats_api          prefixed/stats_api.c          c    180  soham
 internal_props     prefixed/internal_props.c     c    120  soham
 regress_check_heap regress/check_heap_concurrent.c c  120  soham
 regress_thread_detach regress/thread_exit_detach.c c   60  soham
+regress_stats_race regress/stats_concurrent.c c   60  soham
 "
 else
     TABLE="
@@ -224,6 +225,8 @@ regress_signal_enomem regress/signal_reentrant_enomem.c c 60 soham
 regress_signal_attach regress/signal_thread_attach.c c 60 soham
 regress_signal_solo regress/signal_solo_realloc.c c 60 soham
 regress_invalid_frees regress/invalid_frees.c c 60 soham
+regress_trim_deadlock regress/signal_trim_deadlock.c c 60 soham
+regress_fork_notify regress/fork_notify_reuse.c c 60 soham
 "
 fi
 

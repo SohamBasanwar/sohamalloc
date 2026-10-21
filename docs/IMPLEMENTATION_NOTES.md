@@ -45,7 +45,7 @@ window (W bytes, W-aligned; W = 4 GiB on 64-bit, 256 MiB on 32-bit or under TSan
 
 - **Granule map.** `gmap` is a byte map with one entry per W-sized granule of the 48-bit address space (2^16 entries with 4 GiB windows). It is mapped at init.
   - The free fast path computes `g = (a >> wshift) & gmask`. Before init, `gmask` is 0 and `gmap` points to a 1-byte zero map, so every pointer is foreign.
-  - The mask is published last, with release semantics.
+  - The mask is published last, with release semantics. Readers load it first (acquire), and only then `wshift` (a relaxed atomic, stored atomically by init) and the `gmap` pointer (stored with release, loaded with acquire). A free can run on another thread while init is in progress; with this order it is free of data races under the C11 model (TSan-clean, `tests/regress/stats_concurrent.c`).
 - **Record lookup.** `rec = (a & ~(W-1)) + rec_off + ((a & (W-1)) >> 16) * 192`.
   - Multi-slice pages and runs store `head_delta` (in bytes) in every non-head slice record. `rec_head(r)` is a single subtraction.
 - **Slice size.** S = 64 KiB, a compile-time constant (`SOHAM_SLICE_SHIFT`). Base pages of 4, 16 and 64 KiB all give S = 64 KiB.
@@ -92,6 +92,7 @@ A remote freer cannot walk the owner's list. A cycle in the remote chain (a thre
 - **H2.** `tls.busy` is set around every allocator operation of the thread that touches its heap or takes any allocator lock: the fast paths, the slow paths, init and heap attach (`thread_prepare`), thread exit, `soham_collect`, `soham_get_stats` and `soham_check_heap` (`busy_enter`/`busy_leave`). A signal handler that finds it set never touches the thread's heap and never waits for a lock:
   - its mallocs use the shared heap via trylock (`trymode`), or the static arena;
   - its frees use the lock-free remote path, or the deferred list for runs and solos.
+- **H3.** In trymode no blocking lock is ever taken: every lock goes through `lock_or_try()`, and work that needs a blocking lock is skipped (the refill's trim of empty avail pages, the decay tick, `pending_drain`). SOHAM_DEBUG builds enforce it: `soham_lock()` aborts in trymode (`soham_debug_check_blocking`). Violated before 2026-10-21 by the refill's trim (defect R2-1, `docs/research-log/03-defects-and-faults.md`).
 
 ## 5. Lock-free protocols
 
@@ -112,6 +113,7 @@ Checks on every remote free: head == a (immediate double free), and count > cap 
 
 When a heap retires its exhausted `cur` page to the full list, it sets WATCH with a CAS. The CAS succeeds only on a zero remote count; otherwise the page collects its remote frees and stays `cur`.
 
+- `heap_flush` closes the stack (`NOTIFY_CLOSED`); `heap_attach` reopens it only if it is closed (CAS `NOTIFY_CLOSED` -> NULL). A heap recycled as it was (the fork child pools other threads' heaps unflushed) keeps its pending entries; resetting them unconditionally stranded those full pages (defect R2-2).
 - The remote free that brings the remote count to `unfull = max(1, cap/8)` clears WATCH in its CAS and pushes the page onto `oheap->notify`, a Treiber stack. While WATCH is set the chain may be non-empty; full-list pages are never collected, and detach drops WATCH in its own CAS.
 - `nstate` keeps the page on at most one stack.
 - **Closing the stack.** `heap_flush` (thread exit, `soham_collect(1)`) closes the stack with a sentinel. A late push finds it closed and leaves the page's `nstate` clear, instead of leaving it set on a stack nobody drains, which would silence the page's later owners. `heap_attach` reopens the stack. A push to a heap that no longer owns the page is skipped. seq_cst fences on both sides close the store-buffering window between the drain (`nstate = 0`, then read `xfree`) and the freer (CAS `xfree`, then CAS `nstate`).
@@ -128,7 +130,7 @@ When a heap retires its exhausted `cur` page to the full list, it sets WATCH wit
 
   Clearing the owner *before* the ORPHAN publication means a later claimer's owner store can never be overwritten.
 - **resolve** (under the class pool lock, by the thread holding PENDING):
-  - count == cap: CAS to 0, unlink if QUEUED, release the page.
+  - count == cap: CAS to 0, unlink if QUEUED, walk the chain with `merge_chain` (exactly count − folded nodes, each an in-page block boundary, terminator 0), then release the page. The walk is what exposes a remote A,B,A double free that brings the count to cap while a block is still live (defect R2-3); it aborts on any mismatch.
   - ORPHAN with count ≥ cap/8: move it to the pool (QUEUED).
   - otherwise: clear PENDING.
 
@@ -188,7 +190,7 @@ heap_lock -> shared_lock -> pool[c].lock -> ph.lock -> solo_lock -> meta_lock
 The fork-prepare handler takes them in exactly this order; the parent and child handlers release or reset them.
 
 - `resolve` releases the pool lock before `page_release` takes `ph.lock`, so those two never nest.
-- In handler context (`trymode`) every lock below `shared_lock` is a trylock. A failed trylock makes the allocation fall back to the static arena.
+- In handler context (`trymode`) every lock below `shared_lock` is a trylock (invariant H3). A failed trylock makes the allocation fall back to the static arena.
 
 ## 7. Fork
 

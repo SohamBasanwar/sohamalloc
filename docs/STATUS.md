@@ -56,32 +56,49 @@ tests/preload_smoke.sh --lib build/libsohamalloc.so  # real programs
 bench/build_bench.sh && bench/run_bench.sh --reps 3  # full benchmark (~15 min)
 ```
 
-## In progress (2026-10-21, laptop session) -- READ THIS FIRST WHEN RESUMING
+## Review round 2 (2026-10-21): fixed and validated
 
-Review round 2 (workflow run wf_d0487d5f-fa6) was interrupted once and resumed;
-it may not have finished. Three defects are CONFIRMED with reproducers
-(data: docs/research-log/data/review2/, before-results:
-docs/research-log/data/regress-before-after/2026-10-21-review2-before.txt):
+The round was interrupted once, resumed, and then stopped early at the author's request to save the usage budget. The four agents were:
 
-1. Handler-context deadlock (critical): bin_refill -> bin_trim_avail ->
-   page_release -> ph_free takes the blocking g_ph.lock in trymode.
-   Fix: in bin_refill, call bin_trim_avail only when !t_tls.trymode; audit
-   every soham_lock reachable in trymode; SOHAM_DEBUG: abort in soham_lock
-   when t_tls.trymode is set.  Test: tests/regress/signal_trim_deadlock.c
-   (old code: STALL 3/3).
-2. Notify-stack stranding after fork (major): heap_attach stores NULL into
-   h->notify unconditionally.  Fix: CAS NOTIFY_CLOSED -> NULL only.
-   Test: tests/regress/fork_notify_reuse.c (old code: 540/6000 reused, FAIL).
-3. Orphan-page remote double free A,B,A (critical): resolve()'s cnt==cap
-   branch releases the page without walking the chain.  Fix: after the CAS
-   to 0 (and pool_unlink), merge_chain(r, xf_ptr(x), cnt - r->x.folded)
-   before page_release.  Test: new cases in tests/regress/invalid_frees.c
-   (old code: "orphan page A,B,A WRONG (exited)").
-4. TSan: soham_get_stats reads page-heap counters without g_ph.lock
-   (api.c:788) -- read them under the lock.
+- the correctness review, which finished;
+- the concurrency review, which reproduced its findings before it stopped;
+- two verifiers, one interrupted and one restarted.
 
-Reviewer's proposed diff for 1 and 2: docs/research-log/data/review2/reviewer-proposed-fixes.diff.
-The three new tests are NOT yet registered in tests/run_tests.sh (they fail
-until the fixes land).  Next steps follow the directive: apply fixes,
-register the tests, full matrix, sigstorm for sohamalloc (add a "churn"
-handler kind that exercises medium-page trim paths), then the campaigns.
+All five confirmed defects are fixed, each with a regression test that fails on the old code and passes on the new. The ledger with root causes and evidence is `docs/research-log/03-defects-and-faults.md`.
+
+| Defect | Severity | Fix |
+|---|---|---|
+| R2-1: handler-context deadlock | critical | The refill's trim is skipped in trymode. New invariant H3: no blocking lock in trymode, and SOHAM_DEBUG builds abort if one is taken |
+| R2-2: notify-stack stranding after fork | major | heap_attach reopens only a closed stack |
+| R2-3: orphan-page remote double free A,B,A | critical, security | resolve() walks the chain before releasing |
+| R2-4: TSan race in soham_get_stats | minor | Counters read under g_ph.lock |
+| R2-5: TSan race on g_geo.wshift / gmap during init | minor | Acquire mask first, atomic wshift, release/acquire gmap |
+
+**Validation of the committed code:**
+
+| Suite | Result |
+|---|---|
+| Native | 19/19 |
+| Debug | 19/19 |
+| Preload of real programs | 9/9 |
+| TSan, ASan, UBSan | 9/9 each |
+| aarch64 | 19/19 |
+| armhf | 19/19 |
+| musl | 18/18 + 1 skipped (C++) |
+| mingw | 9/9 |
+
+**sigstorm on the debug build** (the H3 assertion is active): 0 failures in 54 runs. The runs covered 7 handler kinds × 1, 2 and 4 threads × 2 seeds × 4 s, plus 12 runs with the page-heavy workload. sigstorm did *not* detect R2-1 on the unfixed code (ledger, "detection power"), so these runs are evidence, not proof.
+
+## Next (directive of 2026-10-21)
+
+1. A new review round on this code. Repeat until no critical or major finding is confirmed.
+2. The full sigstorm campaign:
+   - 9 allocators × 7 handler kinds × 1, 2 and 4 threads;
+   - at least 30 trials each, plus the controls;
+   - raw data in `docs/research-log/data/`.
+3. Document the limits of the signal-safety guarantee in IMPLEMENTATION_NOTES and README.
+4. Measure the busy-byte cost.
+5. Survey real software that allocates in signal handlers.
+6. A tuned benchmark campaign with ten or more repetitions and confidence intervals.
+7. Complete the research log.
+8. The paper and the presentation, only after the gates.

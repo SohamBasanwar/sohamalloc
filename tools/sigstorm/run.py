@@ -65,7 +65,7 @@ ALLOCATORS = {
     "sohamalloc": os.environ.get("SOHAM_LIB", os.path.join(ROOT, "build", "libsohamalloc.so")),
 }
 
-HANDLERS = ["none", "malloc", "free", "realloc", "calloc", "large"]
+HANDLERS = ["none", "malloc", "free", "realloc", "calloc", "large", "churn"]
 FIELDS = ["trial", "alloc", "handler", "seed", "outcome", "detail", "elapsed_ms",
           "signals", "handlers", "handler_null", "handler_bad", "steps", "exit"]
 

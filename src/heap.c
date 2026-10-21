@@ -82,8 +82,9 @@ SOHAM_INLINE rec_t *rec_of(uintptr_t a) {
 }
 
 SOHAM_INLINE bool in_window(uintptr_t a) {
-  uintptr_t g = (a >> g_geo.wshift) & atomic_load_explicit(&g_geo.gmask, memory_order_acquire);
-  return atomic_load_explicit(&atomic_load_explicit(&g_geo.gmap, memory_order_relaxed)[g], memory_order_relaxed) == GM_WINDOW;
+  uintptr_t gm = atomic_load_explicit(&g_geo.gmask, memory_order_acquire);
+  uintptr_t g = (a >> __atomic_load_n(&g_geo.wshift, __ATOMIC_RELAXED)) & gm;   /* see soham_free */
+  return atomic_load_explicit(&atomic_load_explicit(&g_geo.gmap, memory_order_acquire)[g], memory_order_relaxed) == GM_WINDOW;
 }
 
 SOHAM_INLINE uint32_t pending_threshold(uint32_t cap) { return cap >= 8 ? cap / 8 : 1; }
@@ -380,6 +381,10 @@ static void resolve(rec_t *r) {
     if (cnt == cap) {
       if (atomic_compare_exchange_weak_explicit(&r->x.xfree, &x, 0, memory_order_acq_rel, memory_order_acquire)) {
         if (x & XF_QUEUED) pool_unlink(pl, r);
+        /* Walk the chain before releasing, as pool_claim does: a remote
+         * A,B,A double free reaches count == cap with a live block left on
+         * the page, and only the exact-length walk exposes it (abort). */
+        merge_chain(r, xf_ptr(x), cnt - r->x.folded);
         give_back = true;
         break;
       }
@@ -665,7 +670,9 @@ static SOHAM_NOINLINE void *bin_refill(heap_t *h, unsigned c) {
   while (bin->avail) {
     rec_t *a = bin->avail;
     list_unlink(bin, a);
-    if (page_ready(a)) { bin->cur = a; bin_trim_avail(h, bin); return page_pop(a); }
+    /* No trim in handler context: releasing a page takes the blocking
+     * page-heap lock, which the interrupted thread may hold. */
+    if (page_ready(a)) { bin->cur = a; if (likely(!t_tls.trymode)) bin_trim_avail(h, bin); return page_pop(a); }
     if (!page_retire_full(bin, a)) { bin->cur = a; return page_pop(a); }
   }
   /* Shared pages, then a fresh page. */

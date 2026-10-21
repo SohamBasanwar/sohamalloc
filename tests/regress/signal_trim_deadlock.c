@@ -16,12 +16,13 @@
  * (16 blocks per medium page, no spares), so the shared heap's bin gets
  * full pages that become completely free and are trimmed by a later refill.
  * The main thread alternates ordinary churn of 20000-byte blocks (page-heap
- * lock in ph_alloc_slices / ph_free) and mallinfo2() (page-heap lock in the
- * statistics walk).  A watchdog reports STALL (exit 3) when the main thread
+ * lock in ph_alloc_slices / ph_free) and soham_get_stats() (page-heap lock
+ * in the statistics walk; found with dlsym, so the test also builds on musl,
+ * which has no mallinfo2).  A watchdog reports STALL (exit 3) when the main thread
  * makes no progress for 4 s.  Expected: "PASS", exit 0.
  */
 #define _GNU_SOURCE 1
-#include <malloc.h>
+#include <dlfcn.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -29,6 +30,8 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+
+#include "sohamalloc.h"
 
 #define N 256
 #define SZ 12000
@@ -115,6 +118,8 @@ int main(int argc, char **argv)
     pthread_create(&wd, NULL, watchdog, NULL);
     pthread_sigmask(SIG_SETMASK, &old, NULL);
 
+    int (*get_stats)(struct soham_stats *) =
+        (int (*)(struct soham_stats *))dlsym(RTLD_DEFAULT, "soham_get_stats");
     struct timespec t0, t;
     clock_gettime(CLOCK_MONOTONIC, &t0);
     do {
@@ -122,9 +127,9 @@ int main(int argc, char **argv)
             void *v[64];
             for (int k = 0; k < 64; k++) v[k] = malloc(20000);
             for (int k = 0; k < 64; k++) free(v[k]);
-        } else {
-            struct mallinfo2 mi = mallinfo2();
-            (void)mi;
+        } else if (get_stats) {
+            struct soham_stats st;
+            get_stats(&st);
         }
         progress++;
         clock_gettime(CLOCK_MONOTONIC, &t);

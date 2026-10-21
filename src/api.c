@@ -45,6 +45,15 @@ static void wb_bytes(wbuf_t *w, size_t b) {
   wb_str(w, unit[u]);
 }
 
+#if SOHAM_DEBUG
+/* In handler context (tls.trymode) a blocking lock can wait for a lock the
+ * interrupted thread holds: every lock taken there must be a trylock
+ * (lock_or_try).  Debug builds enforce it. */
+void soham_debug_check_blocking(void) {
+  if (unlikely(t_tls.trymode)) soham_fatal("blocking lock taken in signal-handler context (trymode)", 0);
+}
+#endif
+
 void soham_fatal(const char *msg, uintptr_t p) {
   wbuf_t w = { .n = 0, .fd = 2 };
   wb_str(&w, "sohamalloc: ");
@@ -174,7 +183,9 @@ static bool geometry_init(void) {
   }
   if (W < 16 * g_geo.H) W = 16 * g_geo.H;
   g_geo.W = W;
-  g_geo.wshift = log2_exact(W);
+  /* Atomic: soham_free() and in_window() read it, before init completes,
+   * concurrently with this write (the mask they also read is still 0). */
+  __atomic_store_n(&g_geo.wshift, log2_exact(W), __ATOMIC_RELAXED);
   g_geo.wmask = W - 1;
   g_geo.wbase = ~(uintptr_t)(W - 1);
   size_t nhb_total = W / g_geo.H;
@@ -192,7 +203,9 @@ static bool geometry_init(void) {
   void *gm = soham_os_map_rw((gn + B - 1) & ~(B - 1), B);
   if (!gm) return false;
   soham_os_advise_nohuge(gm, (gn + B - 1) & ~(B - 1));
-  atomic_store_explicit(&g_geo.gmap, (_Atomic uint8_t *)gm, memory_order_relaxed);
+  /* Release: a free that runs before the mask is published may already
+   * load this pointer, and must then see the map's (zeroed) contents. */
+  atomic_store_explicit(&g_geo.gmap, (_Atomic uint8_t *)gm, memory_order_release);
   g_gmap_n_pending = gn;
   return true;
 }
@@ -279,7 +292,10 @@ static heap_t *heap_attach(void) {
   else h = heap_create_locked();
   if (h) {
     h->live = 1; h->pool_next = NULL; h->busy_ptr = &t->busy; g_heaps_live++;
-    atomic_store_explicit(&h->notify, NULL, memory_order_release);   /* reopen (heap_flush) */
+    /* Reopen a stack closed by heap_flush.  A heap recycled as it was (the
+     * fork child pools other threads' heaps) keeps its pending entries. */
+    rec_t *closed = NOTIFY_CLOSED;
+    atomic_compare_exchange_strong_explicit(&h->notify, &closed, NULL, memory_order_acq_rel, memory_order_relaxed);
   }
   soham_unlock(&g_heap_lock);
   if (!h) return NULL;
@@ -545,9 +561,12 @@ static SOHAM_NOINLINE void free_slow(void *p) {
 
 SOHAM_API SOHAM_HOT void soham_free(void *p) {
   uintptr_t a = (uintptr_t)p & SOHAM_ADDR_MASK;
-  uintptr_t g = (a >> g_geo.wshift) & atomic_load_explicit(&g_geo.gmask, memory_order_acquire);
+  /* The mask first (acquire), then the shift (relaxed atomic): free can run
+   * while another thread initialises, and the mask is 0 until it is done. */
+  uintptr_t gm = atomic_load_explicit(&g_geo.gmask, memory_order_acquire);
+  uintptr_t g = (a >> __atomic_load_n(&g_geo.wshift, __ATOMIC_RELAXED)) & gm;
   soham_tls_t *t = &t_tls;
-  if (likely(atomic_load_explicit(&atomic_load_explicit(&g_geo.gmap, memory_order_relaxed)[g], memory_order_relaxed) == GM_WINDOW &&
+  if (likely(atomic_load_explicit(&atomic_load_explicit(&g_geo.gmap, memory_order_acquire)[g], memory_order_relaxed) == GM_WINDOW &&
              (a & g_geo.amask) == 0 && atomic_load_explicit(&t->busy, memory_order_relaxed) == 0)) {
     rec_t *r = rec_of(a);
     atomic_store_explicit(&t->busy, BUSY_IN, memory_order_relaxed);
@@ -784,8 +803,10 @@ SOHAM_API int soham_get_stats(struct soham_stats *out) {
   soham_unlock(&g_meta_lock);
   /* Committed metadata is mostly untouched; count the records of used
    * slices and the hugeblock table as the resident part. */
+  soham_lock(&g_ph.lock);
   out->metadata += g_ph.nwindows * (size_t)g_geo.nhb_max * sizeof(hbmeta_t) +
                    (g_ph.s_used + g_ph.s_dirty) * REC_SIZE;
+  soham_unlock(&g_ph.lock);
   soham_lock(&g_solo_lock);
   out->solo = g_solo_bytes;
   soham_unlock(&g_solo_lock);

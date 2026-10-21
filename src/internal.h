@@ -278,7 +278,13 @@ _Static_assert(sizeof(window_t) <= 4096, "window header must fit in one base pag
 typedef struct { _Atomic uint32_t v; } soham_lock_t;
 
 SOHAM_HIDDEN void soham_lock_slow(soham_lock_t *l);
+#if SOHAM_DEBUG
+SOHAM_HIDDEN void soham_debug_check_blocking(void);   /* api.c */
+#endif
 SOHAM_INLINE void soham_lock(soham_lock_t *l) {
+#if SOHAM_DEBUG
+  soham_debug_check_blocking();       /* never a blocking lock in handler context */
+#endif
   uint32_t c = 0;
   if (likely(atomic_compare_exchange_strong_explicit(&l->v, &c, 1, memory_order_acquire, memory_order_relaxed))) return;
   soham_lock_slow(l);

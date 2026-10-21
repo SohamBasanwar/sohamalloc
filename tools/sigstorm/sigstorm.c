@@ -19,9 +19,18 @@
  * A crash (the allocator aborting, or a segfault) kills the process with
  * that signal; tools/sigstorm/run.py records it.
  *
- *   sigstorm --handler=malloc|free|realloc|calloc|large|none
+ *   sigstorm --handler=malloc|free|realloc|calloc|large|churn|none
  *            [--seconds=10] [--interval-us=20] [--threads=2]
  *            [--stall-ms=2000] [--seed=1]
+ *
+ * --handler=churn keeps up to 256 blocks per thread in the handler: it
+ * allocates 256 blocks (one size per round, cycling 48 B .. 160 KB), then
+ * frees them, so handler-context allocation fills pages, empties them and
+ * drives refills, trims and pool claims in every size range.
+ *
+ * --workload=page draws every block from 16 KiB .. 512 KiB instead of the
+ * mostly-small mix, so threads spend much of their time in page-heap
+ * operations (and hold its locks) when signals arrive.
  *
  * --interval-us=0 sends no signals (a control run of the workload alone);
  * --handler=none sends signals whose handler does not allocate (a control
@@ -43,8 +52,8 @@
 
 /* ------------------------------------------------------------ options */
 
-enum { HK_NONE, HK_MALLOC, HK_FREE, HK_REALLOC, HK_CALLOC, HK_LARGE };
-static const char *const hk_names[] = { "none", "malloc", "free", "realloc", "calloc", "large" };
+enum { HK_NONE, HK_MALLOC, HK_FREE, HK_REALLOC, HK_CALLOC, HK_LARGE, HK_CHURN };
+static const char *const hk_names[] = { "none", "malloc", "free", "realloc", "calloc", "large", "churn" };
 
 static int opt_handler = HK_MALLOC;
 static long opt_seconds = 10;
@@ -52,6 +61,7 @@ static long opt_interval_us = 20;
 static int opt_threads = 2;
 static long opt_stall_ms = 2000;
 static unsigned long opt_seed = 1;
+static int opt_page_workload;            /* --workload=page: 16 KiB .. 512 KiB blocks */
 
 /* ------------------------------------------------- allocation-free output */
 
@@ -113,6 +123,8 @@ typedef struct {
     blk_t sorted[MAXLIVE];
     void *_Atomic hpool[HPOOL];          /* blocks the "free" handler releases */
     void *_Atomic xin[XSLOTS];           /* blocks other threads hand us to free */
+    void *cpool[256];                    /* "churn" handler's blocks (handler only) */
+    unsigned cpos, cphase, cround;
 } __attribute__((aligned(64))) ws_t;
 
 static ws_t *ws;
@@ -199,6 +211,23 @@ static void handler(int sig) {
         free(p);
         break;
     }
+    case HK_CHURN: {
+        static const size_t sizes[] = { 48, 3000, 12000, 40000, 160000 };
+        if (w->cphase == 0) {
+            size_t n = sizes[w->cround % 5];
+            atomic_store(&w->hop, OP_MALLOC);
+            unsigned char *p = malloc(n);
+            if (!p) atomic_fetch_add(&w->h_null, 1);
+            else { p[0] = 1; p[n - 1] = 2; }
+            w->cpool[w->cpos] = p;
+        } else {
+            atomic_store(&w->hop, OP_FREE);
+            free(w->cpool[w->cpos]);
+            w->cpool[w->cpos] = NULL;
+        }
+        if (++w->cpos == 256) { w->cpos = 0; if (w->cphase) w->cround++; w->cphase ^= 1u; }
+        break;
+    }
     case HK_LARGE: {
         atomic_store(&w->hop, OP_MALLOC);
         unsigned char *p = malloc(300000);
@@ -221,6 +250,7 @@ static void handler(int sig) {
  * refills, runs, mmap thresholds) and rare multi-megabyte ones. */
 static size_t pick_size(ws_t *w) {
     uint64_t r = rnd(w), v = r >> 8;
+    if (opt_page_workload) return 16384 + v % (512 * 1024);   /* page-heap traffic */
     unsigned k = (unsigned)(r % 64);
     if (k < 32) return 1 + v % 128;
     if (k < 48) return 128 + v % 1920;
@@ -443,9 +473,11 @@ int main(int argc, char **argv) {
         else if (!strncmp(a, "--threads=", 10)) opt_threads = atoi(a + 10);
         else if (!strncmp(a, "--stall-ms=", 11)) opt_stall_ms = atol(a + 11);
         else if (!strncmp(a, "--seed=", 7)) opt_seed = strtoul(a + 7, NULL, 10);
+        else if (!strcmp(a, "--workload=page")) opt_page_workload = 1;
+        else if (!strcmp(a, "--workload=mixed")) opt_page_workload = 0;
         else opt_handler = -1;
         if (opt_handler < 0) {
-            static const char u[] = "usage: sigstorm --handler=none|malloc|free|realloc|calloc|large [--seconds=N] "
+            static const char u[] = "usage: sigstorm --handler=none|malloc|free|realloc|calloc|large|churn [--seconds=N] "
                                     "[--interval-us=N] [--threads=N] [--stall-ms=N] [--seed=N]\n";
             if (write(2, u, sizeof u - 1) < 0) {}
             return 2;
