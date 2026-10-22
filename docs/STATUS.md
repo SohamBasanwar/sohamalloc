@@ -1,6 +1,6 @@
 # sohamalloc: project status
 
-Last updated: 2026-10-22 17:40 UTC, branch `sohamalloc-dev`.
+Last updated: 2026-10-22 17:55 UTC, branch `sohamalloc-dev`.
 
 ## Where things stand
 
@@ -47,45 +47,47 @@ Round 3 fixes:
 
 The limits of the signal-safety guarantee are documented in `docs/IMPLEMENTATION_NOTES.md` §10 and in the README.
 
-## Running now (2026-10-22 17:40 UTC)
+## Stopped at the author's request (2026-10-22 ~17:50 UTC)
 
-**What happened since 2026-10-21 21:47 UTC:**
+Nothing is running. Everything is saved in git.
 
-1. **Usage limit.** The session hit its usage limit. Both workflows then running failed, with no agent finished: review round 4 (`wf_a26b2874-42a`) and the research-log update (`wf_de0bc03b-12d`). The research-log writers left no files behind (`git status` was clean).
-2. **Reboot.** The machine rebooted overnight. That killed the sohamalloc campaign rerun at 168 of 810 trials, all survived, and wiped the session scratch directory: the unfixed-code build, the frozen review libraries and the test binaries.
-   - Nothing that matters was lost: the before/after records, the matrix record and campaign 1 were already in `docs/research-log/data/`.
-   - The frozen review libraries were restored from the repository's build directories, built from `fd735dd`. Their sha256 match the earlier copies: release `77ab3a6b`, debug `60def547`, armhf `f052de62`, aarch64 `a0e72684`.
+**Review round 4 (gate 2) has not been done.** Two attempts on `fd735dd` produced no findings:
 
-**sigstorm campaign 1 is finished** (6480 trials, 2026-10-21 17:41–21:44 UTC). Archived in `docs/research-log/data/sigstorm-campaign1/` with a README.
+- `wf_a26b2874-42a` (2026-10-21) failed at the usage limit;
+- `wf_f93f99a2-398` (2026-10-22) was stopped at the author's request before any reviewer finished (its journal has no results).
+
+**To run it:**
+
+- **Same session:** resume with `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round4b-wf_f93f99a2-398.js", resumeFromRunId: "wf_f93f99a2-398"})`.
+- **New session:** relaunch that script, which is self-contained.
+
+It expects frozen `fd735dd` libraries in `<session scratchpad>/review4/libs/`. Copy them from `build/`, `build-debug/`, `build-thread/`, `build-armhf/` and `build-aarch64/`, rebuilt from `fd735dd` if needed, and check the sha256 prefixes: release `77ab3a6b`, debug `60def547`, armhf `f052de62`, aarch64 `a0e72684`.
+
+**sigstorm campaign 1 is finished and archived** (`docs/research-log/data/sigstorm-campaign1/`).
 
 - sohamalloc, as the frozen `c1a9791` build: 0 failures in 540 signal trials, 95% CI [0, 0.007].
 - Every other allocator failed in 50–100% of its signal trials.
 - The 1620 control trials all survived.
 
-**sohamalloc rerun on the fixed code `fd735dd`** (810 trials: the 8 handler kinds of campaign 1 plus `aligned`, × 1, 2 and 4 threads × 30):
+**sohamalloc rerun on `fd735dd`: stopped at 456 of 810 trials, all survived.**
 
-- Directory `bench/out/sigstorm-c1-soham-fd735dd/`, which holds the frozen library `libsohamalloc-fd735dd.so` (sha256 `77ab3a6b…`). Log: `bench/out/sigstorm-c1-soham-fd735dd.log`.
-- Resumed 17:33 UTC.
-- **If interrupted:** `SOHAM_LIB=$PWD/bench/out/sigstorm-c1-soham-fd735dd/libsohamalloc-fd735dd.so python3 tools/sigstorm/run.py --resume bench/out/sigstorm-c1-soham-fd735dd --jobs 4`
+- Interim data and the resume command: `docs/research-log/data/sigstorm-c1-soham-fd735dd-partial/README.md`.
+- Its frozen library is in `bench/out/sigstorm-c1-soham-fd735dd/` (git-ignored).
+- Rerun it on the final code once the round-4 fixes and the prototype below are in.
 
-**Review round 4 of `fd735dd`**, relaunched 17:3x UTC as workflow run `wf_f93f99a2-398`. It is leaner than the first attempt, to stay within the usage limit:
+**Prototype, not applied:** handler-context fallback for large requests. Requests above 16 KiB skip the static arena and take a mapping of their own under trylock.
 
-- the same five lenses, at reasoning effort "high";
-- one combined refuter per finding, plus a second independent refuter for anything claimed or judged critical or major, and a tie-breaker on a split;
-- the completeness critic and gap reviewers run only when no critical or major finding is confirmed.
+- It removes the handler NULLs that campaign 1 measured: `large` 95–143 NULLs per 5 s run on `fd735dd`, 0 with the patch, on the release and debug builds.
+- Patch, regression test (written, not yet run), measurements and next steps: `docs/research-log/data/proto-handler-fallback/`.
+- Apply it with `git apply docs/research-log/data/proto-handler-fallback/handler-solo-fallback.patch`, then follow the README's next steps.
 
-Reviewers include each reproducer's source in their result, because scratch directories do not survive a reboot.
+**Research-log update:** not done; its workflow failed at the usage limit with no files written. Script to relaunch: `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-research-log-wf_de0bc03b-12d.js`.
 
-- **Journal and transcripts:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/subagents/workflows/wf_f93f99a2-398/`.
-- **If interrupted:**
-  - **Same session:** `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round4b-wf_f93f99a2-398.js", resumeFromRunId: "wf_f93f99a2-398"})`.
-  - **New session:** salvage the findings from `journal.jsonl` into `docs/research-log/data/review4/`, which stays out of git as raw notes.
-
-**Research-log update:** to be relaunched after review round 4. Its script: `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-research-log-wf_de0bc03b-12d.js`.
+**Lost in the reboot of 2026-10-21/22:** the session scratch directory (`/tmp/claude-1000/…`), which held builds and test binaries. Everything needed is in git or rebuildable from it.
 
 ## Next
 
-1. **Review round 4** on `fd735dd` (running, see above). Repeat rounds until none confirms a critical or major finding (gate 2).
+1. **Review round 4** on `fd735dd` (not done yet, see above). Then fix what it confirms, together with the prototype, run the verification matrix, and review again until no critical or major finding is confirmed. Repeat rounds until none confirms a critical or major finding (gate 2).
 2. **Campaign.** Finish campaign 1. Rerun sohamalloc's rows on the fixed code. Add an `aligned` handler kind to sigstorm (round 3 showed the gap) and run it for all allocators. Copy the data to `docs/research-log/data/`.
 3. **Busy-byte cost** measurement, then the tuned benchmark campaign: ≥10 repetitions with confidence intervals, on a quiet machine with `sudo tools/bench-host.sh tune`.
 4. **Research log.** Complete `02-experiments`, `04-design-decisions` and `06-paper-assessment`, and extend `01-timeline` past 2026-10-19.
