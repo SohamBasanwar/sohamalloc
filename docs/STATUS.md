@@ -58,6 +58,11 @@ The limits of the signal-safety guarantee are documented in `docs/IMPLEMENTATION
   - **Same session:** `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round4c.js", resumeFromRunId: "wf_75415e22-635"})`.
   - **New session:** relaunch that script, which is self-contained, after copying `bench/out/review4-libs-ae95875/*` into the scratchpad's `review4/libs/`. Salvage any finished findings from `journal.jsonl` into `docs/research-log/data/review4/` (raw notes, git-excluded).
 
+**sigstorm, `aligned` handler kind for the other eight allocators** (720 trials; started 23:3x UTC). It complements campaign 1, whose controls stand for the same allocator builds on this machine.
+
+- Output: `bench/out/sigstorm-aligned-others/`. Log: `bench/out/sigstorm-aligned-others.log`.
+- **If interrupted:** `python3 tools/sigstorm/run.py --resume bench/out/sigstorm-aligned-others --jobs 4`
+
 **Done since the last checkpoint:**
 
 - **C1-1, committed in `ae95875`.** Handler requests above 16 KiB skip the static arena; anything the shared heap and the arena cannot serve gets a solo mapping under trylock.
