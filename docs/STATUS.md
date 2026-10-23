@@ -1,6 +1,6 @@
 # sohamalloc: project status
 
-Last updated: 2026-10-22 23:25 UTC, branch `sohamalloc-dev`.
+Last updated: 2026-10-23 14:30 UTC, branch `sohamalloc-dev`.
 
 ## Where things stand
 
@@ -47,16 +47,24 @@ Round 3 fixes:
 
 The limits of the signal-safety guarantee are documented in `docs/IMPLEMENTATION_NOTES.md` §10 and in the README.
 
-## Running now (2026-10-22 23:2x UTC)
+## Review round 4 result (2026-10-23)
 
-**Review round 4 (gate 2)** of `ae95875`, as workflow run `wf_75415e22-635`. `ae95875` holds the round-3 fixes (`fd735dd`) plus the handler mapping fallback (C1-1).
+**Review round 4** of `ae95875` (workflow run `wf_75415e22-635`) finished with 24 findings, 15 confirmed, 7 of them critical or major. **Gate 2 does not hold yet.** 12 refuters failed at the usage limit, so a few findings are still unverified.
 
-- **Design.** Five lenses at reasoning effort "high". One combined refuter per finding, plus a second for anything claimed or judged critical or major, and a tie-breaker on a split. The completeness critic and up to three gap reviewers run only when nothing blocking is confirmed.
-- **Frozen libraries:** `<session scratchpad>/review4/libs/`, with a copy in `bench/out/review4-libs-ae95875/`. sha256 prefixes: release `96810dba`, debug `6dd2195d`, armhf `cae9f398`, aarch64 `583d7bea`.
-- **Journal and transcripts:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/subagents/workflows/wf_75415e22-635/`.
-- **If interrupted:**
-  - **Same session:** `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round4c.js", resumeFromRunId: "wf_75415e22-635"})`.
-  - **New session:** relaunch that script, which is self-contained, after copying `bench/out/review4-libs-ae95875/*` into the scratchpad's `review4/libs/`. Salvage any finished findings from `journal.jsonl` into `docs/research-log/data/review4/` (raw notes, git-excluded).
+- **Raw results:** `docs/research-log/data/review4/` (git-excluded raw notes).
+- **Ledger:** a neutral summary goes into `03-defects-and-faults.md` with the fixes.
+
+**Confirmed critical or major, to fix with fail-before/pass-after tests:**
+
+1. **critical:** `fork()` while another thread is inside lazy initialisation leaves the child unable to initialise. Fix: fork-safe init.
+2. **critical:** a gap in double-free detection on pages of exited threads. Fix: check the block accounting before such a page is released or claimed.
+3. **major:** run and solo frees deferred by signal handlers are not drained by threads that only take the fast paths or only free, nor after the drain at thread exit. Fix: drain in more places; free at once when a trylock succeeds.
+4. **major:** allocations in atfork handlers registered before sohamalloc's first use fail inside the fork window. Fix: let the forking thread allocate normally while it holds the locks.
+5. **major:** a module that embeds the prefixed archive cannot be unloaded. Fix: delete the thread key in a destructor.
+
+**Unverified, refuter lost:** a missing store-buffering fence in the pending-page handoff, claimed major. Fix anyway, mirroring the notify protocol.
+
+**Confirmed minor:** documentation of §10 after C1-1; a `g_shared_trim` flag race; fork-child stranding of pages with a resolver in flight; data races on configuration read before init completes; double frees into spare pages and of solos not reported; `realloc` keeping a block without the checks that `free` applies; handler-context frees of foreign pointers.
 
 **sigstorm, `aligned` handler kind for the other eight allocators** (720 trials; started 23:3x UTC). It complements campaign 1, whose controls stand for the same allocator builds on this machine.
 
@@ -81,7 +89,7 @@ The limits of the signal-safety guarantee are documented in `docs/IMPLEMENTATION
 
 ## Next
 
-1. **Review round 4** on `ae95875` (running, see above). Fix what it confirms, run `tools/verify-matrix.sh`, and review again; repeat until a round confirms no critical or major finding (gate 2).
+1. **Round-4 fixes** (above), then `tools/verify-matrix.sh`, then review round 5. Fix what it confirms, run `tools/verify-matrix.sh`, and review again; repeat until a round confirms no critical or major finding (gate 2).
 2. **Campaign.**
    - Rerun sohamalloc's rows of campaign 1 on the final code: all 9 handler kinds, including `aligned`.
    - Run the `aligned` kind for the other eight allocators.
