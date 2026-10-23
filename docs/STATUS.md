@@ -70,7 +70,13 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
   - mingw 9/9 + 2 skipped;
   - sigstorm 66/66.
 
-**Gate 2 still needs a clean round:** review round 5 on this commit is next.
+**Gate 2 still needs a clean round. Review round 5 of `d2add24`** is running as workflow run `wf_dba46797-17e`, with the same design as round 4.
+
+- **Frozen libraries:** `<session scratchpad>/review5/libs/`, with a copy in `bench/out/review5-libs-d2add24/`. sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
+- **Journal:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/subagents/workflows/wf_dba46797-17e/`.
+- **If interrupted:**
+  - **Same session:** `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round5.js", resumeFromRunId: "wf_dba46797-17e"})`.
+  - **New session:** relaunch that script after copying `bench/out/review5-libs-d2add24/*` into the scratchpad's `review5/libs/`. Save finished findings into `docs/research-log/data/review5/` (git-excluded).
 
 **sigstorm, `aligned` handler kind for the other eight allocators** (720 trials; started 23:3x UTC). It complements campaign 1, whose controls stand for the same allocator builds on this machine.
 
