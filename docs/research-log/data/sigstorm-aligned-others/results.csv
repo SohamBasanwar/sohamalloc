@@ -1,0 +1,721 @@
+trial,alloc,threads,handler,seed,outcome,detail,elapsed_ms,signals,handlers,inside,handler_null,handler_bad,steps,exit
+0,glibc,1,aligned,1000,stall,main:malloc handler:posix_memalign in_handler=1,28,99198,5,1,0,0,4,3
+0,glibc,2,aligned,1000,stall,main:calloc handler:posix_memalign in_handler=1,28,99162,57,2,0,0,98,3
+0,glibc,4,aligned,1000,stall,main:malloc handler:posix_memalign in_handler=1,28,99054,888,30,0,0,7316,3
+0,jemalloc,1,aligned,1000,stall,main:malloc handler:posix_memalign in_handler=1,27,99262,7,1,0,0,4,3
+0,mimalloc,1,aligned,1000,crash,SIGSEGV,1367,,,,,,,-11
+0,jemalloc,2,aligned,1000,stall,main:malloc handler:posix_memalign in_handler=1,28,98008,48877,47774,0,0,4525,3
+0,jemalloc,4,aligned,1000,stall,main:malloc handler:posix_memalign in_handler=1,26,98286,25430,24227,0,0,5683,3
+0,mimalloc,2,aligned,1000,crash,SIGSEGV,2735,,,,,,,-11
+0,mimalloc,4,aligned,1000,crash,SIGSEGV,2382,,,,,,,-11
+0,tcmalloc,1,aligned,1000,stall,main:calloc handler:posix_memalign in_handler=1,28,99111,21,2,0,0,13,3
+0,tcmalloc,2,aligned,1000,stall,main:free handler:free in_handler=1,49,100247,2715,1296,0,0,6327,3
+0,tcmalloc,4,aligned,1000,stall,main:free handler:free in_handler=1,29,99313,415,69,0,0,1909,3
+0,tbbmalloc,1,aligned,1000,crash,SIGSEGV,1125,,,,,,,-11
+0,tbbmalloc,4,aligned,1000,crash,SIGSEGV,1817,,,,,,,-11
+0,tbbmalloc,2,aligned,1000,stall,main:calloc handler:posix_memalign in_handler=1,28,99143,216,52,0,0,685,3
+0,scudo,2,aligned,1000,survived,,5038,236954,229086,9863,0,0,480054,0
+0,snmalloc,1,aligned,1000,crash,SIGSEGV,4847,,,,,,,-11
+0,scudo,4,aligned,1000,survived,,5038,236412,229005,13062,0,0,959098,0
+0,scudo,1,aligned,1000,stall,main:malloc handler:posix_memalign in_handler=1,4484,240931,205774,7381,0,0,272109,3
+0,snmalloc,2,aligned,1000,crash,SIGSEGV,2041,,,,,,,-11
+0,snmalloc,4,aligned,1000,crash,SIGSEGV,2042,,,,,,,-11
+0,hardened_malloc,1,aligned,1000,stall,main:calloc handler:posix_memalign in_handler=1,29,99395,744,103,0,0,827,3
+0,hardened_malloc,2,aligned,1000,stall,main:calloc handler:posix_memalign in_handler=1,28,99112,747,124,0,0,984,3
+0,hardened_malloc,4,aligned,1000,stall,main:realloc handler:posix_memalign in_handler=1,28,99136,842,151,0,0,2178,3
+1,jemalloc,1,aligned,1001,stall,main:realloc handler:posix_memalign in_handler=1,27,98903,642,12,0,0,813,3
+1,jemalloc,2,aligned,1001,stall,main:malloc handler:posix_memalign in_handler=1,28,99076,522,11,0,0,1441,3
+1,jemalloc,4,aligned,1001,stall,main:malloc handler:posix_memalign in_handler=1,27,98931,1380,34,0,0,7306,3
+1,mimalloc,1,aligned,1001,crash,SIGSEGV,1513,,,,,,,-11
+1,mimalloc,4,aligned,1001,crash,SIGSEGV,1901,,,,,,,-11
+1,tcmalloc,1,aligned,1001,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,98728,55,24,0,0,48,3
+1,tcmalloc,2,aligned,1001,stall,main:malloc handler:free in_handler=1,28,98714,175,46,0,0,464,3
+1,mimalloc,2,aligned,1001,crash,SIGSEGV,3145,,,,,,,-11
+1,tcmalloc,4,aligned,1001,stall,main:malloc handler:posix_memalign in_handler=1,28,98921,490,96,0,0,1545,3
+1,tbbmalloc,1,aligned,1001,stall,main:calloc handler:posix_memalign in_handler=1,28,98955,274,62,0,0,433,3
+1,tbbmalloc,2,aligned,1001,stall,main:malloc handler:posix_memalign in_handler=1,28,98612,912,89,0,0,1817,3
+1,tbbmalloc,4,aligned,1001,stall,main:malloc handler:posix_memalign in_handler=1,28,97647,466,61,0,0,1482,3
+1,scudo,1,aligned,1001,survived,,5036,241144,231401,8269,0,0,280293,0
+1,scudo,2,aligned,1001,survived,,5038,237474,229741,9799,0,0,419231,0
+1,scudo,4,aligned,1001,survived,,5034,240112,232551,14122,0,0,1087926,0
+1,snmalloc,1,aligned,1001,survived,,5021,237948,234294,8200,0,0,292491,0
+1,snmalloc,2,aligned,1001,crash,SIGSEGV,1385,,,,,,,-11
+1,snmalloc,4,aligned,1001,crash,SIGSEGV,1955,,,,,,,-11
+1,hardened_malloc,1,aligned,1001,stall,main:calloc handler:posix_memalign in_handler=1,69,101013,2258,217,0,0,2155,3
+1,hardened_malloc,2,aligned,1001,stall,main:malloc handler:posix_memalign in_handler=1,128,103804,5983,610,0,0,11012,3
+1,hardened_malloc,4,aligned,1001,stall,main:malloc handler:posix_memalign in_handler=1,27,99018,3577,389,0,0,13201,3
+1,glibc,1,aligned,1001,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,98958,57,1,0,0,48,3
+1,glibc,2,aligned,1001,stall,main:calloc handler:posix_memalign in_handler=1,28,99023,8,2,0,0,22,3
+1,glibc,4,aligned,1001,stall,main:malloc handler:posix_memalign in_handler=1,28,99033,182,6,0,0,414,3
+2,mimalloc,2,aligned,1002,crash,SIGSEGV,1100,,,,,,,-11
+2,mimalloc,4,aligned,1002,crash,SIGSEGV,1820,,,,,,,-11
+2,tcmalloc,1,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,28,98901,22,8,0,0,34,3
+2,tcmalloc,2,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,48,99872,1675,82,0,0,4509,3
+2,mimalloc,1,aligned,1002,survived,,5037,241715,240490,5426,0,0,476637,0
+2,tbbmalloc,1,aligned,1002,crash,SIGSEGV,1115,,,,,,,-11
+2,tcmalloc,4,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,28,98999,200,24,0,0,687,3
+2,tbbmalloc,2,aligned,1002,crash,SIGSEGV,1983,,,,,,,-11
+2,tbbmalloc,4,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,26,98764,375,81,0,0,1326,3
+2,scudo,4,aligned,1002,stall,main:calloc handler:posix_memalign in_handler=1,490,118835,45991,25317,0,0,99189,3
+2,scudo,2,aligned,1002,corruption,content,3791,180363,174477,7338,0,0,415388,4
+2,snmalloc,4,aligned,1002,crash,SIGSEGV,1221,,,,,,,-11
+2,scudo,1,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,3140,240987,143388,4695,0,0,152336,3
+2,snmalloc,1,aligned,1002,survived,,5021,240424,236952,7469,0,0,394767,0
+2,hardened_malloc,1,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,28,98862,15,5,0,0,17,3
+2,hardened_malloc,2,aligned,1002,stall,main:realloc handler:posix_memalign in_handler=1,48,99634,1004,136,0,0,1141,3
+2,hardened_malloc,4,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,27,98824,1573,207,0,0,4708,3
+2,glibc,1,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,28,98871,6,3,0,0,13,3
+2,glibc,2,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,28,99084,61,3,0,0,75,3
+2,snmalloc,2,aligned,1002,stall,main:malloc handler:none in_handler=0,5029,239994,238047,115427,0,0,441866,3
+2,glibc,4,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,28,99084,34,5,0,0,169,3
+2,jemalloc,1,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,27,99078,268,2,0,0,177,3
+2,jemalloc,2,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,27,99126,157,6,0,0,306,3
+2,jemalloc,4,aligned,1002,stall,main:malloc handler:posix_memalign in_handler=1,27,98822,506,13,0,0,2434,3
+3,tcmalloc,1,aligned,1003,stall,main:realloc handler:posix_memalign in_handler=1,27,99096,606,59,0,0,1095,3
+3,tcmalloc,2,aligned,1003,stall,main:none handler:posix_memalign in_handler=1,27,99058,352,42,0,0,575,3
+3,tcmalloc,4,aligned,1003,stall,main:calloc handler:posix_memalign in_handler=1,27,99063,130,30,0,0,470,3
+3,tbbmalloc,1,aligned,1003,crash,SIGSEGV,1116,,,,,,,-11
+3,tbbmalloc,2,aligned,1003,crash,SIGSEGV,1664,,,,,,,-11
+3,tbbmalloc,4,aligned,1003,stall,main:calloc handler:posix_memalign in_handler=1,28,98666,172,127,0,0,163,3
+3,snmalloc,1,aligned,1003,corruption,content,240,11580,11234,508,0,0,10333,4
+3,snmalloc,2,aligned,1003,crash,SIGSEGV,1273,,,,,,,-11
+3,snmalloc,4,aligned,1003,crash,SIGSEGV,1181,,,,,,,-11
+3,scudo,1,aligned,1003,survived,,5037,240615,230450,8036,0,0,224641,0
+3,scudo,2,aligned,1003,stall,main:realloc handler:posix_memalign in_handler=1,3684,238280,166041,7630,0,0,389491,3
+3,scudo,4,aligned,1003,survived,,5037,240204,232973,14053,0,0,1061656,0
+3,hardened_malloc,1,aligned,1003,stall,main:free handler:posix_memalign in_handler=1,68,100454,1773,137,0,0,887,3
+3,hardened_malloc,2,aligned,1003,stall,main:realloc handler:posix_memalign in_handler=1,88,101481,3883,421,0,0,4772,3
+3,hardened_malloc,4,aligned,1003,stall,main:malloc handler:posix_memalign in_handler=1,27,98508,6100,726,0,0,17578,3
+3,glibc,1,aligned,1003,stall,main:calloc handler:posix_memalign in_handler=1,28,99041,74,1,0,0,20,3
+3,glibc,2,aligned,1003,stall,main:malloc handler:posix_memalign in_handler=1,28,98548,43,2,0,0,49,3
+3,glibc,4,aligned,1003,stall,main:malloc handler:posix_memalign in_handler=1,28,98951,25,4,0,0,109,3
+3,jemalloc,1,aligned,1003,stall,main:malloc handler:posix_memalign in_handler=1,29,97790,511,7,0,0,186,3
+3,mimalloc,1,aligned,1003,crash,SIGSEGV,1373,,,,,,,-11
+3,jemalloc,2,aligned,1003,stall,main:calloc handler:posix_memalign in_handler=1,28,98980,745,12,0,0,2057,3
+3,jemalloc,4,aligned,1003,stall,main:calloc handler:posix_memalign in_handler=1,28,98285,1069,30,0,0,4800,3
+3,mimalloc,2,aligned,1003,crash,SIGSEGV,1372,,,,,,,-11
+4,tbbmalloc,1,aligned,1004,crash,SIGSEGV,2007,,,,,,,-11
+3,mimalloc,4,aligned,1003,crash,SIGSEGV,3051,,,,,,,-11
+4,tbbmalloc,2,aligned,1004,crash,SIGSEGV,3846,,,,,,,-11
+4,scudo,2,aligned,1004,stall,main:malloc handler:posix_memalign in_handler=1,29,99067,294,28,0,0,721,3
+4,tbbmalloc,4,aligned,1004,crash,SIGSEGV,4076,,,,,,,-11
+4,snmalloc,1,aligned,1004,corruption,content,1003,48182,47267,1752,0,0,51396,4
+4,scudo,1,aligned,1004,survived,,5022,240939,232170,7788,0,0,349647,0
+4,snmalloc,4,aligned,1004,crash,SIGSEGV,1333,,,,,,,-11
+4,snmalloc,2,aligned,1004,stall,main:realloc handler:posix_memalign in_handler=1,449,117890,68070,2591,0,0,167462,3
+4,scudo,4,aligned,1004,survived,,5020,239372,232326,13656,0,0,1043387,0
+4,hardened_malloc,1,aligned,1004,stall,main:calloc handler:posix_memalign in_handler=1,48,99436,1419,171,0,0,584,3
+4,hardened_malloc,2,aligned,1004,stall,main:malloc handler:posix_memalign in_handler=1,28,98806,1717,209,0,0,2305,3
+4,hardened_malloc,4,aligned,1004,stall,main:none handler:posix_memalign in_handler=1,69,98192,1914,304,0,0,4475,3
+4,glibc,1,aligned,1004,stall,main:realloc handler:posix_memalign in_handler=1,26,98985,2,1,0,0,35,3
+4,glibc,2,aligned,1004,stall,main:realloc handler:posix_memalign in_handler=1,28,97866,48623,48609,0,0,104,3
+4,glibc,4,aligned,1004,stall,main:malloc handler:posix_memalign in_handler=1,27,99058,34,4,0,0,235,3
+4,jemalloc,1,aligned,1004,stall,main:posix_memalign handler:posix_memalign in_handler=1,27,99012,10,1,0,0,16,3
+4,mimalloc,1,aligned,1004,crash,SIGSEGV,1143,,,,,,,-11
+4,jemalloc,2,aligned,1004,stall,main:calloc handler:posix_memalign in_handler=1,27,98930,618,6,0,0,1115,3
+4,jemalloc,4,aligned,1004,stall,main:realloc handler:posix_memalign in_handler=1,28,97818,24838,24400,0,0,2936,3
+4,mimalloc,2,aligned,1004,crash,SIGSEGV,2225,,,,,,,-11
+4,mimalloc,4,aligned,1004,crash,SIGSEGV,2286,,,,,,,-11
+4,tcmalloc,1,aligned,1004,stall,main:free handler:free in_handler=1,27,99101,857,43,0,0,1411,3
+4,tcmalloc,2,aligned,1004,stall,main:free handler:free in_handler=1,68,101181,1951,95,0,0,7622,3
+4,tcmalloc,4,aligned,1004,stall,main:none handler:posix_memalign in_handler=1,27,99042,28,8,0,0,217,3
+5,scudo,1,aligned,1005,survived,,5020,240188,230559,8301,0,0,282624,0
+5,scudo,2,aligned,1005,survived,,5036,238666,230801,9796,0,0,443376,0
+5,scudo,4,aligned,1005,survived,,5038,239892,232033,13348,0,0,901099,0
+5,snmalloc,1,aligned,1005,survived,,5039,239089,235356,8455,0,0,350732,0
+5,snmalloc,4,aligned,1005,crash,SIGSEGV,1129,,,,,,,-11
+5,hardened_malloc,1,aligned,1005,stall,main:malloc handler:posix_memalign in_handler=1,28,99163,167,44,0,0,159,3
+5,snmalloc,2,aligned,1005,crash,SIGSEGV,2431,,,,,,,-11
+5,hardened_malloc,2,aligned,1005,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,99247,1172,152,0,0,2878,3
+5,hardened_malloc,4,aligned,1005,stall,main:calloc handler:posix_memalign in_handler=1,28,99033,4320,504,0,0,20387,3
+5,glibc,1,aligned,1005,stall,main:calloc handler:posix_memalign in_handler=1,28,99239,31,1,0,0,48,3
+5,glibc,2,aligned,1005,stall,main:calloc handler:posix_memalign in_handler=1,28,99226,13,2,0,0,53,3
+5,glibc,4,aligned,1005,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,99194,5,4,0,0,53,3
+5,jemalloc,1,aligned,1005,stall,main:malloc handler:posix_memalign in_handler=1,28,99156,21,2,0,0,31,3
+5,jemalloc,2,aligned,1005,stall,main:malloc handler:posix_memalign in_handler=1,28,99149,113,4,0,0,210,3
+5,jemalloc,4,aligned,1005,stall,main:malloc handler:posix_memalign in_handler=1,30,99163,520,20,0,0,3316,3
+5,mimalloc,2,aligned,1005,crash,SIGSEGV,1314,,,,,,,-11
+5,mimalloc,4,aligned,1005,crash,SIGSEGV,1379,,,,,,,-11
+5,tcmalloc,1,aligned,1005,stall,main:malloc handler:posix_memalign in_handler=1,28,98486,6,3,0,0,29,3
+5,tcmalloc,2,aligned,1005,crash,SIGSEGV,2027,,,,,,,-11
+5,tcmalloc,4,aligned,1005,stall,main:malloc handler:posix_memalign in_handler=1,28,99290,8,6,0,0,56,3
+5,mimalloc,1,aligned,1005,crash,SIGSEGV,4763,,,,,,,-11
+5,tbbmalloc,1,aligned,1005,stall,main:calloc handler:posix_memalign in_handler=1,27,99080,134,9,0,0,259,3
+5,tbbmalloc,2,aligned,1005,crash,SIGSEGV,2042,,,,,,,-11
+5,tbbmalloc,4,aligned,1005,crash,SIGSEGV,2060,,,,,,,-11
+6,snmalloc,4,aligned,1006,stall,main:realloc handler:posix_memalign in_handler=1,149,101759,60006,2606,0,0,315637,3
+6,snmalloc,2,aligned,1006,corruption,content,2550,122769,122257,62708,0,0,207259,4
+6,hardened_malloc,1,aligned,1006,stall,main:malloc handler:posix_memalign in_handler=1,28,98122,0,1,0,0,2,3
+6,hardened_malloc,2,aligned,1006,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,98843,163,36,0,0,199,3
+6,hardened_malloc,4,aligned,1006,stall,main:malloc handler:posix_memalign in_handler=1,49,99884,1539,240,0,0,4426,3
+6,snmalloc,1,aligned,1006,crash,SIGSEGV,5616,,,,,,,-11
+6,glibc,1,aligned,1006,stall,main:malloc handler:posix_memalign in_handler=1,28,99058,2,1,0,0,23,3
+6,glibc,2,aligned,1006,stall,main:malloc handler:posix_memalign in_handler=1,27,98929,63,2,0,0,88,3
+6,glibc,4,aligned,1006,stall,main:malloc handler:posix_memalign in_handler=1,28,98992,41,5,0,0,195,3
+6,jemalloc,1,aligned,1006,stall,main:malloc handler:posix_memalign in_handler=1,27,98857,31,3,0,0,60,3
+6,jemalloc,2,aligned,1006,stall,main:malloc handler:posix_memalign in_handler=1,26,98896,25,2,0,0,73,3
+6,mimalloc,2,aligned,1006,crash,SIGSEGV,1361,,,,,,,-11
+6,jemalloc,4,aligned,1006,stall,main:malloc handler:posix_memalign in_handler=1,28,98816,137,13,0,0,669,3
+6,mimalloc,1,aligned,1006,crash,SIGSEGV,2676,,,,,,,-11
+6,tcmalloc,1,aligned,1006,stall,main:malloc handler:posix_memalign in_handler=1,29,98819,37,8,0,0,60,3
+6,tcmalloc,2,aligned,1006,stall,main:none handler:posix_memalign in_handler=1,28,99003,16,5,0,0,70,3
+6,mimalloc,4,aligned,1006,crash,SIGSEGV,3234,,,,,,,-11
+6,tcmalloc,4,aligned,1006,stall,main:malloc handler:posix_memalign in_handler=1,28,98220,40,7,0,0,270,3
+6,tbbmalloc,2,aligned,1006,crash,SIGSEGV,1150,,,,,,,-11
+6,tbbmalloc,1,aligned,1006,stall,main:malloc handler:posix_memalign in_handler=1,28,98739,311,18,0,0,298,3
+6,tbbmalloc,4,aligned,1006,stall,main:calloc handler:posix_memalign in_handler=1,28,97838,183,94,0,0,364,3
+7,hardened_malloc,1,aligned,1007,stall,main:malloc handler:posix_memalign in_handler=1,91,102245,3156,383,0,0,2039,3
+6,scudo,1,aligned,1006,survived,,5037,236841,226656,8040,0,0,321492,0
+6,scudo,2,aligned,1006,survived,,5036,236180,228831,9722,0,0,492316,0
+7,hardened_malloc,2,aligned,1007,stall,main:malloc handler:posix_memalign in_handler=1,30,99469,2116,236,0,0,2075,3
+7,hardened_malloc,4,aligned,1007,stall,main:calloc handler:posix_memalign in_handler=1,28,99476,7734,994,0,0,22451,3
+6,scudo,4,aligned,1006,stall,main:none handler:posix_memalign in_handler=1,4304,241360,217733,29005,0,0,864376,3
+7,glibc,1,aligned,1007,stall,main:malloc handler:posix_memalign in_handler=1,28,99674,1,1,0,0,10,3
+7,glibc,2,aligned,1007,stall,main:malloc handler:posix_memalign in_handler=1,28,99757,24,2,0,0,54,3
+7,glibc,4,aligned,1007,stall,main:realloc handler:posix_memalign in_handler=1,27,99743,157,9,0,0,904,3
+7,jemalloc,1,aligned,1007,stall,main:malloc handler:posix_memalign in_handler=1,28,99674,291,9,0,0,564,3
+7,jemalloc,2,aligned,1007,stall,main:malloc handler:posix_memalign in_handler=1,27,99552,451,7,0,0,961,3
+7,jemalloc,4,aligned,1007,stall,main:free-remote handler:posix_memalign in_handler=1,28,99047,25777,24177,0,0,7983,3
+7,mimalloc,1,aligned,1007,crash,SIGSEGV,1404,,,,,,,-11
+7,mimalloc,4,aligned,1007,crash,SIGSEGV,2030,,,,,,,-11
+7,tcmalloc,1,aligned,1007,stall,main:calloc handler:posix_memalign in_handler=1,28,99773,106,12,0,0,126,3
+7,tcmalloc,2,aligned,1007,stall,main:none handler:posix_memalign in_handler=1,28,99769,256,31,0,0,527,3
+7,mimalloc,2,aligned,1007,crash,SIGSEGV,3197,,,,,,,-11
+7,tbbmalloc,1,aligned,1007,crash,SIGSEGV,1974,,,,,,,-11
+7,tcmalloc,4,aligned,1007,stall,main:malloc handler:posix_memalign in_handler=1,28,99783,178,21,0,0,870,3
+7,tbbmalloc,2,aligned,1007,stall,main:none handler:posix_memalign in_handler=1,27,99531,375,37,0,0,700,3
+7,tbbmalloc,4,aligned,1007,crash,SIGSEGV,2039,,,,,,,-11
+7,scudo,2,aligned,1007,stall,main:malloc handler:posix_memalign in_handler=1,911,141500,41863,2077,0,0,94663,3
+7,snmalloc,1,aligned,1007,corruption,content,1988,96247,94858,3378,0,0,149431,4
+7,snmalloc,2,aligned,1007,crash,SIGSEGV,1200,,,,,,,-11
+7,scudo,1,aligned,1007,survived,,5040,241943,232935,8126,0,0,338570,0
+7,snmalloc,4,aligned,1007,crash,SIGSEGV,2132,,,,,,,-11
+7,scudo,4,aligned,1007,stall,main:none handler:posix_memalign in_handler=1,2234,203793,101578,6097,0,0,425194,3
+8,glibc,1,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,28,99103,52,2,0,0,69,3
+8,glibc,2,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,28,98979,18,3,0,0,47,3
+8,glibc,4,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,28,99182,36,5,0,0,217,3
+8,jemalloc,1,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,27,98932,20,1,0,0,27,3
+8,jemalloc,2,aligned,1008,stall,main:calloc handler:posix_memalign in_handler=1,28,99128,942,22,0,0,2177,3
+8,jemalloc,4,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,28,99009,913,17,0,0,5725,3
+8,mimalloc,2,aligned,1008,crash,SIGSEGV,2124,,,,,,,-11
+8,mimalloc,1,aligned,1008,crash,SIGSEGV,3246,,,,,,,-11
+8,tcmalloc,1,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,28,99322,466,38,0,0,471,3
+8,tcmalloc,2,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,28,99300,18,5,0,0,73,3
+8,mimalloc,4,aligned,1008,crash,SIGSEGV,3262,,,,,,,-11
+8,tcmalloc,4,aligned,1008,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,99097,137,20,0,0,717,3
+8,tbbmalloc,2,aligned,1008,crash,SIGSEGV,1117,,,,,,,-11
+8,tbbmalloc,1,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,27,98996,91,16,0,0,145,3
+8,tbbmalloc,4,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,28,98844,194,88,0,0,639,3
+8,scudo,4,aligned,1008,corruption,content,581,27692,26872,1587,0,0,117207,4
+8,scudo,1,aligned,1008,stall,main:realloc handler:posix_memalign in_handler=1,3420,241849,155800,5261,0,0,159208,3
+8,snmalloc,1,aligned,1008,survived,,5020,239518,235288,7806,0,0,309190,0
+8,snmalloc,4,aligned,1008,corruption,content,803,38012,37787,7419,0,0,166208,4
+8,scudo,2,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,4665,241214,215798,9299,0,0,464492,3
+8,hardened_malloc,1,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,28,99184,276,45,0,0,216,3
+8,hardened_malloc,2,aligned,1008,stall,main:none handler:posix_memalign in_handler=1,48,100279,1646,202,0,0,2369,3
+8,snmalloc,2,aligned,1008,stall,main:calloc handler:none in_handler=0,5009,240928,239661,101296,0,0,453919,3
+8,hardened_malloc,4,aligned,1008,stall,main:malloc handler:posix_memalign in_handler=1,28,99110,2195,277,0,0,7095,3
+9,mimalloc,1,aligned,1009,crash,SIGSEGV,1084,,,,,,,-11
+9,jemalloc,1,aligned,1009,stall,main:malloc handler:posix_memalign in_handler=1,28,98969,919,10,0,0,716,3
+9,jemalloc,2,aligned,1009,stall,main:calloc handler:posix_memalign in_handler=1,27,99034,323,4,0,0,376,3
+9,jemalloc,4,aligned,1009,stall,main:malloc handler:posix_memalign in_handler=1,26,98986,1473,35,0,0,8570,3
+9,mimalloc,4,aligned,1009,crash,SIGSEGV,1389,,,,,,,-11
+9,tcmalloc,1,aligned,1009,stall,main:malloc handler:posix_memalign in_handler=1,27,98929,8,1,0,0,16,3
+9,tcmalloc,2,aligned,1009,stall,main:none handler:posix_memalign in_handler=1,28,99017,30,6,0,0,65,3
+9,mimalloc,2,aligned,1009,crash,SIGSEGV,2618,,,,,,,-11
+9,tbbmalloc,2,aligned,1009,crash,SIGSEGV,1146,,,,,,,-11
+9,tcmalloc,4,aligned,1009,stall,main:none handler:posix_memalign in_handler=1,26,99015,91,11,0,0,226,3
+9,tbbmalloc,1,aligned,1009,crash,SIGSEGV,2194,,,,,,,-11
+9,tbbmalloc,4,aligned,1009,crash,SIGSEGV,3089,,,,,,,-11
+9,snmalloc,1,aligned,1009,corruption,content,361,17045,16719,647,0,0,24575,4
+9,scudo,2,aligned,1009,stall,main:malloc handler:posix_memalign in_handler=1,2578,220877,119020,5163,0,0,248578,3
+9,snmalloc,2,aligned,1009,crash,SIGSEGV,2375,,,,,,,-11
+9,snmalloc,4,aligned,1009,corruption,content,261,12338,12248,2566,0,0,52438,4
+9,scudo,1,aligned,1009,survived,,5020,239934,229913,8467,0,0,317831,0
+9,scudo,4,aligned,1009,survived,,5039,240148,232992,13260,0,0,970699,0
+9,hardened_malloc,1,aligned,1009,stall,main:malloc handler:posix_memalign in_handler=1,27,98868,209,14,0,0,36,3
+9,hardened_malloc,2,aligned,1009,stall,main:malloc handler:posix_memalign in_handler=1,49,99966,1384,173,0,0,1850,3
+9,hardened_malloc,4,aligned,1009,stall,main:posix_memalign handler:posix_memalign in_handler=1,27,98773,6057,746,0,0,20146,3
+9,glibc,1,aligned,1009,stall,main:malloc handler:posix_memalign in_handler=1,28,98929,102,1,0,0,39,3
+9,glibc,2,aligned,1009,stall,main:malloc handler:posix_memalign in_handler=1,28,99033,36,2,0,0,35,3
+9,glibc,4,aligned,1009,stall,main:malloc handler:posix_memalign in_handler=1,8,97870,598,15,0,0,2771,3
+10,mimalloc,2,aligned,1010,crash,SIGSEGV,1548,,,,,,,-11
+10,mimalloc,1,aligned,1010,crash,SIGSEGV,3630,,,,,,,-11
+10,tcmalloc,1,aligned,1010,stall,main:malloc handler:posix_memalign in_handler=1,29,99036,3,3,0,0,41,3
+10,tcmalloc,2,aligned,1010,stall,main:malloc handler:posix_memalign in_handler=1,28,98856,4,4,0,0,48,3
+10,tbbmalloc,1,aligned,1010,crash,SIGSEGV,1100,,,,,,,-11
+10,tcmalloc,4,aligned,1010,stall,main:none handler:posix_memalign in_handler=1,28,99022,227,40,0,0,856,3
+10,mimalloc,4,aligned,1010,crash,SIGSEGV,4232,,,,,,,-11
+10,tbbmalloc,2,aligned,1010,crash,SIGSEGV,2422,,,,,,,-11
+10,tbbmalloc,4,aligned,1010,crash,SIGSEGV,3069,,,,,,,-11
+10,scudo,1,aligned,1010,stall,main:posix_memalign handler:posix_memalign in_handler=1,1254,157979,56863,2002,0,0,79813,3
+10,scudo,4,aligned,1010,stall,main:malloc handler:posix_memalign in_handler=1,28,98859,784,68,0,0,2487,3
+10,snmalloc,4,aligned,1010,corruption,content,220,10429,10283,584,0,0,55805,4
+10,snmalloc,2,aligned,1010,crash,SIGSEGV,1205,,,,,,,-11
+10,scudo,2,aligned,1010,survived,,5021,240040,232295,9907,0,0,602934,0
+10,hardened_malloc,1,aligned,1010,stall,main:calloc handler:posix_memalign in_handler=1,48,100031,902,78,0,0,554,3
+10,hardened_malloc,2,aligned,1010,stall,main:malloc handler:posix_memalign in_handler=1,28,98785,461,59,0,0,636,3
+10,snmalloc,1,aligned,1010,survived,,5021,240205,236988,7762,0,0,415152,0
+10,hardened_malloc,4,aligned,1010,stall,main:malloc handler:posix_memalign in_handler=1,28,98872,924,100,0,0,1832,3
+10,glibc,1,aligned,1010,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,99026,0,1,0,0,37,3
+10,glibc,2,aligned,1010,stall,main:malloc handler:posix_memalign in_handler=1,28,99034,3,2,0,0,48,3
+10,glibc,4,aligned,1010,stall,main:malloc handler:posix_memalign in_handler=1,28,99184,91,6,0,0,427,3
+10,jemalloc,1,aligned,1010,stall,main:malloc handler:posix_memalign in_handler=1,28,99063,529,9,0,0,428,3
+10,jemalloc,2,aligned,1010,stall,main:free handler:posix_memalign in_handler=1,28,99081,517,14,0,0,859,3
+10,jemalloc,4,aligned,1010,stall,main:malloc handler:posix_memalign in_handler=1,28,99117,482,14,0,0,2579,3
+11,tcmalloc,2,aligned,1011,crash,SIGSEGV,1143,,,,,,,-11
+11,tcmalloc,1,aligned,1011,stall,main:malloc handler:posix_memalign in_handler=1,28,98993,2,3,0,0,13,3
+11,tbbmalloc,1,aligned,1011,crash,SIGSEGV,1120,,,,,,,-11
+11,tcmalloc,4,aligned,1011,stall,main:none handler:posix_memalign in_handler=1,28,99077,370,31,0,0,1595,3
+11,tbbmalloc,2,aligned,1011,crash,SIGSEGV,2080,,,,,,,-11
+11,tbbmalloc,4,aligned,1011,crash,SIGSEGV,2233,,,,,,,-11
+11,scudo,2,aligned,1011,stall,main:malloc handler:posix_memalign in_handler=1,1474,167911,68275,3242,0,0,183711,3
+11,snmalloc,2,aligned,1011,crash,SIGSEGV,1210,,,,,,,-11
+11,scudo,1,aligned,1011,survived,,5020,239838,229769,8101,0,0,319665,0
+11,scudo,4,aligned,1011,survived,,5038,239476,232299,13722,0,0,1022308,0
+11,snmalloc,4,aligned,1011,crash,SIGSEGV,1830,,,,,,,-11
+11,hardened_malloc,1,aligned,1011,stall,main:malloc handler:posix_memalign in_handler=1,26,98869,53,14,0,0,39,3
+11,snmalloc,1,aligned,1011,survived,,5040,238607,234873,8074,0,0,346698,0
+11,hardened_malloc,2,aligned,1011,stall,main:calloc handler:posix_memalign in_handler=1,48,99843,3027,311,0,0,6442,3
+11,hardened_malloc,4,aligned,1011,stall,main:calloc handler:posix_memalign in_handler=1,28,98879,2460,345,0,0,8375,3
+11,glibc,1,aligned,1011,stall,main:malloc handler:posix_memalign in_handler=1,28,99068,20,1,0,0,49,3
+11,glibc,2,aligned,1011,stall,main:malloc handler:posix_memalign in_handler=1,28,99011,12,2,0,0,38,3
+11,glibc,4,aligned,1011,stall,main:malloc handler:posix_memalign in_handler=1,27,98890,7,4,0,0,97,3
+11,jemalloc,1,aligned,1011,stall,main:malloc handler:posix_memalign in_handler=1,28,98966,371,11,0,0,525,3
+11,jemalloc,2,aligned,1011,stall,main:malloc handler:posix_memalign in_handler=1,28,98830,998,25,0,0,2606,3
+11,jemalloc,4,aligned,1011,stall,main:calloc handler:posix_memalign in_handler=1,27,98972,1035,25,0,0,5432,3
+11,mimalloc,1,aligned,1011,crash,SIGSEGV,2088,,,,,,,-11
+12,tbbmalloc,1,aligned,1012,crash,SIGSEGV,2081,,,,,,,-11
+12,tbbmalloc,2,aligned,1012,stall,main:malloc handler:posix_memalign in_handler=1,28,99028,696,192,0,0,1712,3
+11,mimalloc,4,aligned,1011,crash,SIGSEGV,3174,,,,,,,-11
+12,tbbmalloc,4,aligned,1012,stall,main:malloc handler:posix_memalign in_handler=1,28,98612,15,7,0,0,174,3
+11,mimalloc,2,aligned,1011,crash,SIGSEGV,4590,,,,,,,-11
+12,scudo,4,aligned,1012,stall,main:malloc handler:posix_memalign in_handler=1,29,98999,16,8,0,0,177,3
+12,scudo,1,aligned,1012,stall,main:malloc handler:posix_memalign in_handler=1,1895,188170,85451,2836,0,0,120079,3
+12,snmalloc,2,aligned,1012,crash,SIGSEGV,1963,,,,,,,-11
+12,scudo,2,aligned,1012,survived,,5020,239898,232273,10129,0,0,555686,0
+12,snmalloc,1,aligned,1012,survived,,5039,241258,237319,7767,0,0,368640,0
+12,snmalloc,4,aligned,1012,stall,main:none handler:posix_memalign in_handler=1,270,108562,84005,3750,0,0,520649,3
+12,hardened_malloc,1,aligned,1012,stall,main:malloc handler:posix_memalign in_handler=1,49,99617,923,127,0,0,562,3
+12,hardened_malloc,2,aligned,1012,stall,main:calloc handler:posix_memalign in_handler=1,49,99984,2211,317,0,0,3665,3
+12,hardened_malloc,4,aligned,1012,stall,main:none handler:posix_memalign in_handler=1,27,99194,399,97,0,0,978,3
+12,glibc,1,aligned,1012,stall,main:malloc handler:posix_memalign in_handler=1,28,99127,18,1,0,0,52,3
+12,glibc,2,aligned,1012,stall,main:malloc handler:posix_memalign in_handler=1,26,99099,21,2,0,0,119,3
+12,glibc,4,aligned,1012,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,98423,24550,24530,0,0,161,3
+12,jemalloc,1,aligned,1012,stall,main:calloc handler:posix_memalign in_handler=1,28,99000,130,2,0,0,132,3
+12,jemalloc,2,aligned,1012,stall,main:malloc handler:posix_memalign in_handler=1,28,99029,715,16,0,0,2384,3
+12,jemalloc,4,aligned,1012,stall,main:free handler:posix_memalign in_handler=1,48,100227,1417,29,0,0,6631,3
+12,mimalloc,4,aligned,1012,crash,SIGSEGV,1175,,,,,,,-11
+12,mimalloc,2,aligned,1012,crash,SIGSEGV,2290,,,,,,,-11
+12,tcmalloc,1,aligned,1012,stall,main:free handler:free in_handler=1,29,99365,559,68,0,0,1149,3
+12,tcmalloc,2,aligned,1012,stall,main:malloc handler:posix_memalign in_handler=1,28,99333,15,5,0,0,108,3
+12,mimalloc,1,aligned,1012,crash,SIGSEGV,5343,,,,,,,-11
+12,tcmalloc,4,aligned,1012,stall,main:realloc handler:posix_memalign in_handler=1,28,99131,73,24,0,0,396,3
+13,scudo,1,aligned,1013,stall,main:malloc handler:posix_memalign in_handler=1,28,99075,14,11,0,0,67,3
+13,snmalloc,2,aligned,1013,crash,SIGSEGV,1148,,,,,,,-11
+13,scudo,4,aligned,1013,stall,main:realloc handler:posix_memalign in_handler=1,330,112479,38767,25118,0,0,53072,3
+13,snmalloc,4,aligned,1013,crash,SIGSEGV,1205,,,,,,,-11
+13,scudo,2,aligned,1013,survived,,5039,241546,234275,10093,0,0,634005,0
+13,hardened_malloc,1,aligned,1013,stall,main:free handler:posix_memalign in_handler=1,129,103716,4782,465,0,0,2848,3
+13,snmalloc,1,aligned,1013,survived,,5038,241004,237625,7359,0,0,395538,0
+13,hardened_malloc,2,aligned,1013,stall,main:malloc handler:posix_memalign in_handler=1,29,98520,6247,617,0,0,7648,3
+13,hardened_malloc,4,aligned,1013,stall,main:malloc handler:posix_memalign in_handler=1,28,98952,4251,520,0,0,12280,3
+13,glibc,1,aligned,1013,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,98977,5,2,0,0,19,3
+13,glibc,2,aligned,1013,stall,main:calloc handler:posix_memalign in_handler=1,28,98988,15,2,0,0,30,3
+13,glibc,4,aligned,1013,stall,main:malloc handler:posix_memalign in_handler=1,27,99052,72,4,0,0,343,3
+13,jemalloc,1,aligned,1013,stall,main:malloc handler:free in_handler=1,28,99102,194,5,0,0,113,3
+13,jemalloc,2,aligned,1013,stall,main:none handler:free in_handler=1,28,98946,516,8,0,0,1140,3
+13,jemalloc,4,aligned,1013,stall,main:malloc handler:posix_memalign in_handler=1,28,98651,1287,29,0,0,4404,3
+13,mimalloc,2,aligned,1013,crash,SIGSEGV,1810,,,,,,,-11
+13,mimalloc,4,aligned,1013,crash,SIGSEGV,2384,,,,,,,-11
+13,tcmalloc,1,aligned,1013,stall,main:free handler:free in_handler=1,29,99109,590,55,0,0,519,3
+13,tcmalloc,2,aligned,1013,stall,main:realloc handler:posix_memalign in_handler=1,48,99879,1579,64,0,0,4082,3
+13,mimalloc,1,aligned,1013,survived,,5022,240727,239952,5661,0,0,464545,0
+13,tcmalloc,4,aligned,1013,stall,main:none handler:posix_memalign in_handler=1,28,98837,32,7,0,0,207,3
+13,tbbmalloc,1,aligned,1013,stall,main:free handler:posix_memalign in_handler=1,47,99889,1061,100,0,0,968,3
+13,tbbmalloc,4,aligned,1013,crash,SIGSEGV,1140,,,,,,,-11
+14,snmalloc,4,aligned,1014,corruption,content,261,12211,12043,629,0,0,50993,4
+13,tbbmalloc,2,aligned,1013,stall,main:malloc handler:posix_memalign in_handler=1,28,98867,298,37,0,0,551,3
+14,hardened_malloc,1,aligned,1014,stall,main:malloc handler:posix_memalign in_handler=1,29,98855,317,60,0,0,176,3
+14,hardened_malloc,2,aligned,1014,stall,main:malloc handler:posix_memalign in_handler=1,28,98694,909,88,0,0,1061,3
+14,hardened_malloc,4,aligned,1014,stall,main:malloc handler:posix_memalign in_handler=1,108,102475,3858,515,0,0,10321,3
+14,snmalloc,1,aligned,1014,survived,,5022,240474,236572,7280,0,0,385024,0
+14,glibc,1,aligned,1014,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,98798,1,1,0,0,10,3
+14,glibc,2,aligned,1014,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,98922,41,2,0,0,18,3
+14,glibc,4,aligned,1014,stall,main:malloc handler:posix_memalign in_handler=1,28,98999,81,7,0,0,308,3
+14,jemalloc,1,aligned,1014,stall,main:malloc handler:posix_memalign in_handler=1,27,98916,11,1,0,0,35,3
+14,snmalloc,2,aligned,1014,stall,main:malloc handler:none in_handler=0,5047,241432,239646,116366,0,0,363731,3
+14,mimalloc,2,aligned,1014,crash,SIGSEGV,1177,,,,,,,-11
+14,jemalloc,2,aligned,1014,stall,main:calloc handler:posix_memalign in_handler=1,28,98973,91,5,0,0,207,3
+14,jemalloc,4,aligned,1014,stall,main:calloc handler:posix_memalign in_handler=1,28,98230,26068,23958,0,0,9839,3
+14,mimalloc,1,aligned,1014,crash,SIGSEGV,2359,,,,,,,-11
+14,mimalloc,4,aligned,1014,crash,SIGSEGV,2041,,,,,,,-11
+14,tcmalloc,1,aligned,1014,stall,main:free handler:free in_handler=1,26,98838,923,60,0,0,1168,3
+14,tcmalloc,2,aligned,1014,stall,main:realloc handler:free in_handler=1,27,98968,447,42,0,0,1155,3
+14,tcmalloc,4,aligned,1014,stall,main:malloc handler:posix_memalign in_handler=1,28,99024,27,18,0,0,108,3
+14,tbbmalloc,1,aligned,1014,crash,SIGSEGV,2018,,,,,,,-11
+14,tbbmalloc,2,aligned,1014,crash,SIGSEGV,2657,,,,,,,-11
+14,tbbmalloc,4,aligned,1014,crash,SIGSEGV,3457,,,,,,,-11
+14,scudo,1,aligned,1014,stall,main:realloc handler:posix_memalign in_handler=1,2580,221939,118559,3940,0,0,176430,3
+15,hardened_malloc,1,aligned,1015,stall,main:malloc handler:posix_memalign in_handler=1,28,98594,401,60,0,0,151,3
+14,scudo,2,aligned,1014,survived,,5039,240774,233890,10130,0,0,601386,0
+15,hardened_malloc,2,aligned,1015,stall,main:malloc handler:posix_memalign in_handler=1,27,98969,830,84,0,0,511,3
+15,hardened_malloc,4,aligned,1015,stall,main:malloc handler:posix_memalign in_handler=1,27,98179,3053,404,0,0,8586,3
+15,glibc,1,aligned,1015,stall,main:malloc handler:posix_memalign in_handler=1,28,99085,24,1,0,0,25,3
+14,scudo,4,aligned,1014,stall,main:malloc handler:posix_memalign in_handler=1,4325,238440,215123,28617,0,0,864438,3
+15,glibc,2,aligned,1015,stall,main:malloc handler:posix_memalign in_handler=1,28,99081,2,2,0,0,19,3
+15,glibc,4,aligned,1015,stall,main:malloc handler:posix_memalign in_handler=1,28,99194,115,5,0,0,252,3
+15,jemalloc,1,aligned,1015,stall,main:malloc handler:posix_memalign in_handler=1,26,99030,67,1,0,0,96,3
+15,jemalloc,2,aligned,1015,stall,main:malloc handler:posix_memalign in_handler=1,26,98901,171,3,0,0,220,3
+15,jemalloc,4,aligned,1015,stall,main:malloc handler:posix_memalign in_handler=1,26,98187,24673,24408,0,0,682,3
+15,mimalloc,2,aligned,1015,crash,SIGSEGV,1382,,,,,,,-11
+15,mimalloc,4,aligned,1015,crash,SIGSEGV,2125,,,,,,,-11
+15,tcmalloc,1,aligned,1015,stall,main:malloc handler:posix_memalign in_handler=1,28,98972,20,4,0,0,30,3
+15,tcmalloc,2,aligned,1015,stall,main:calloc handler:posix_memalign in_handler=1,28,98931,112,15,0,0,128,3
+15,tbbmalloc,1,aligned,1015,crash,SIGSEGV,1145,,,,,,,-11
+15,mimalloc,1,aligned,1015,survived,,5020,238796,237895,5724,0,0,455978,0
+15,tcmalloc,4,aligned,1015,stall,main:none handler:posix_memalign in_handler=1,28,98737,308,31,0,0,602,3
+15,tbbmalloc,2,aligned,1015,crash,SIGSEGV,1362,,,,,,,-11
+15,tbbmalloc,4,aligned,1015,crash,SIGSEGV,2073,,,,,,,-11
+15,scudo,1,aligned,1015,survived,,5037,241110,230901,8059,0,0,295556,0
+15,scudo,2,aligned,1015,survived,,5037,240746,232421,9948,0,0,465305,0
+15,scudo,4,aligned,1015,survived,,5035,236152,227880,13275,0,0,878305,0
+15,snmalloc,2,aligned,1015,crash,SIGSEGV,1617,,,,,,,-11
+15,snmalloc,1,aligned,1015,survived,,5037,239339,235780,7984,0,0,380584,0
+15,snmalloc,4,aligned,1015,crash,SIGSEGV,2276,,,,,,,-11
+16,glibc,1,aligned,1016,stall,main:malloc handler:posix_memalign in_handler=1,25,99306,2,1,0,0,11,3
+16,glibc,2,aligned,1016,stall,main:malloc handler:posix_memalign in_handler=1,28,99392,16,2,0,0,114,3
+16,glibc,4,aligned,1016,stall,main:malloc handler:posix_memalign in_handler=1,28,99338,29,4,0,0,111,3
+16,jemalloc,1,aligned,1016,stall,main:realloc handler:posix_memalign in_handler=1,28,99265,178,5,0,0,201,3
+16,jemalloc,2,aligned,1016,stall,main:posix_memalign handler:posix_memalign in_handler=1,27,99298,1848,43,0,0,4866,3
+16,jemalloc,4,aligned,1016,stall,main:malloc handler:posix_memalign in_handler=1,28,99319,452,17,0,0,1874,3
+16,mimalloc,2,aligned,1016,crash,SIGSEGV,1306,,,,,,,-11
+16,mimalloc,1,aligned,1016,crash,SIGSEGV,3226,,,,,,,-11
+16,tcmalloc,1,aligned,1016,stall,main:malloc handler:posix_memalign in_handler=1,28,99489,7,1,0,0,18,3
+16,mimalloc,4,aligned,1016,crash,SIGSEGV,3263,,,,,,,-11
+16,tcmalloc,2,aligned,1016,stall,main:free handler:posix_memalign in_handler=1,48,100512,1216,109,0,0,3040,3
+16,tbbmalloc,1,aligned,1016,crash,SIGSEGV,1301,,,,,,,-11
+16,tcmalloc,4,aligned,1016,stall,main:none handler:posix_memalign in_handler=1,27,99474,37,14,0,0,260,3
+16,tbbmalloc,2,aligned,1016,crash,SIGSEGV,2022,,,,,,,-11
+16,tbbmalloc,4,aligned,1016,crash,SIGSEGV,3040,,,,,,,-11
+16,scudo,4,aligned,1016,stall,main:malloc handler:posix_memalign in_handler=1,969,142102,92141,50874,0,0,183935,3
+16,scudo,1,aligned,1016,survived,,5021,240789,230985,8021,0,0,311296,0
+16,scudo,2,aligned,1016,survived,,5023,241062,233853,9948,0,0,613004,0
+16,snmalloc,2,aligned,1016,crash,SIGSEGV,1416,,,,,,,-11
+16,hardened_malloc,1,aligned,1016,stall,main:malloc handler:posix_memalign in_handler=1,29,99366,204,33,0,0,181,3
+16,snmalloc,4,aligned,1016,corruption,content,2068,98151,97942,26559,0,0,489751,4
+16,hardened_malloc,2,aligned,1016,stall,main:calloc handler:posix_memalign in_handler=1,28,98675,1150,153,0,0,1546,3
+16,snmalloc,1,aligned,1016,crash,SIGSEGV,5839,,,,,,,-11
+17,jemalloc,4,aligned,1017,crash,SIGSEGV,1112,,,,,,,-11
+16,hardened_malloc,4,aligned,1016,stall,main:malloc handler:posix_memalign in_handler=1,27,99353,2970,393,0,0,12101,3
+17,jemalloc,1,aligned,1017,stall,main:calloc handler:free in_handler=1,28,98828,187,2,0,0,164,3
+17,jemalloc,2,aligned,1017,stall,main:malloc handler:posix_memalign in_handler=1,28,98766,42,4,0,0,106,3
+17,mimalloc,4,aligned,1017,crash,SIGSEGV,1355,,,,,,,-11
+17,tcmalloc,1,aligned,1017,crash,SIGSEGV,2020,,,,,,,-11
+17,mimalloc,2,aligned,1017,crash,SIGSEGV,3421,,,,,,,-11
+17,tcmalloc,2,aligned,1017,crash,SIGSEGV,3036,,,,,,,-11
+17,tcmalloc,4,aligned,1017,stall,main:none handler:posix_memalign in_handler=1,27,98512,72,24,0,0,297,3
+17,mimalloc,1,aligned,1017,survived,,5022,240600,239738,5541,0,0,465551,0
+17,tbbmalloc,1,aligned,1017,stall,main:free handler:posix_memalign in_handler=1,88,101381,3542,166,0,0,5039,3
+17,tbbmalloc,4,aligned,1017,crash,SIGSEGV,1162,,,,,,,-11
+17,tbbmalloc,2,aligned,1017,stall,main:none handler:posix_memalign in_handler=1,27,98104,182,37,0,0,377,3
+17,snmalloc,1,aligned,1017,corruption,content,1885,90515,89053,2888,0,0,138023,4
+17,scudo,2,aligned,1017,stall,main:none handler:posix_memalign in_handler=1,1794,182892,81588,3457,0,0,149416,3
+17,snmalloc,2,aligned,1017,crash,SIGSEGV,1221,,,,,,,-11
+17,scudo,1,aligned,1017,survived,,5036,239430,229403,7861,0,0,288810,0
+17,scudo,4,aligned,1017,survived,,5039,238692,231141,13309,0,0,971941,0
+17,snmalloc,4,aligned,1017,crash,SIGSEGV,1563,,,,,,,-11
+17,hardened_malloc,1,aligned,1017,stall,main:malloc handler:posix_memalign in_handler=1,28,98760,210,24,0,0,161,3
+17,hardened_malloc,2,aligned,1017,stall,main:malloc handler:posix_memalign in_handler=1,28,98610,1455,190,0,0,2653,3
+17,hardened_malloc,4,aligned,1017,stall,main:malloc handler:posix_memalign in_handler=1,47,99335,8125,1006,0,0,30410,3
+17,glibc,1,aligned,1017,stall,main:calloc handler:posix_memalign in_handler=1,26,98512,38,2,0,0,75,3
+17,glibc,2,aligned,1017,stall,main:realloc handler:posix_memalign in_handler=1,28,98597,76,3,0,0,150,3
+17,glibc,4,aligned,1017,stall,main:calloc handler:posix_memalign in_handler=1,28,98525,40,4,0,0,154,3
+18,mimalloc,2,aligned,1018,crash,SIGSEGV,1357,,,,,,,-11
+18,tcmalloc,1,aligned,1018,stall,main:malloc handler:posix_memalign in_handler=1,89,102026,3093,148,0,0,4099,3
+18,mimalloc,1,aligned,1018,crash,SIGSEGV,3585,,,,,,,-11
+18,tcmalloc,2,aligned,1018,stall,main:malloc handler:posix_memalign in_handler=1,29,99385,12,5,0,0,21,3
+18,mimalloc,4,aligned,1018,crash,SIGSEGV,3683,,,,,,,-11
+18,tcmalloc,4,aligned,1018,stall,main:malloc handler:posix_memalign in_handler=1,28,99095,98,32,0,0,395,3
+18,tbbmalloc,1,aligned,1018,stall,main:calloc handler:posix_memalign in_handler=1,28,99332,455,69,0,0,515,3
+18,tbbmalloc,2,aligned,1018,crash,SIGSEGV,3047,,,,,,,-11
+18,tbbmalloc,4,aligned,1018,crash,SIGSEGV,3066,,,,,,,-11
+18,scudo,1,aligned,1018,stall,main:malloc handler:posix_memalign in_handler=1,471,120340,21356,758,0,0,32378,3
+18,snmalloc,2,aligned,1018,crash,SIGSEGV,1795,,,,,,,-11
+18,scudo,2,aligned,1018,survived,,5039,241210,232964,10142,0,0,562444,0
+18,snmalloc,4,aligned,1018,crash,SIGSEGV,2050,,,,,,,-11
+18,scudo,4,aligned,1018,stall,main:realloc handler:posix_memalign in_handler=1,3260,241604,171874,30261,0,0,626212,3
+18,snmalloc,1,aligned,1018,survived,,5040,240464,237055,7830,0,0,394026,0
+18,hardened_malloc,1,aligned,1018,stall,main:calloc handler:posix_memalign in_handler=1,88,102094,3011,355,0,0,3702,3
+18,hardened_malloc,2,aligned,1018,stall,main:free handler:posix_memalign in_handler=1,48,98749,49617,48771,0,0,923,3
+18,hardened_malloc,4,aligned,1018,stall,main:malloc handler:posix_memalign in_handler=1,27,99006,2581,349,0,0,8147,3
+18,glibc,1,aligned,1018,stall,main:malloc handler:posix_memalign in_handler=1,28,99145,5,2,0,0,8,3
+18,glibc,2,aligned,1018,stall,main:malloc handler:posix_memalign in_handler=1,28,97935,48679,48604,0,0,169,3
+18,glibc,4,aligned,1018,stall,main:malloc handler:posix_memalign in_handler=1,28,98515,24628,24544,0,0,410,3
+18,jemalloc,1,aligned,1018,stall,main:calloc handler:posix_memalign in_handler=1,27,99116,493,5,0,0,584,3
+18,jemalloc,2,aligned,1018,stall,main:malloc handler:posix_memalign in_handler=1,28,99159,786,13,0,0,2392,3
+18,jemalloc,4,aligned,1018,stall,main:calloc handler:posix_memalign in_handler=1,28,99290,1182,23,0,0,5784,3
+19,tcmalloc,1,aligned,1019,stall,main:calloc handler:posix_memalign in_handler=1,28,98725,187,56,0,0,431,3
+19,tbbmalloc,1,aligned,1019,crash,SIGSEGV,1081,,,,,,,-11
+19,tcmalloc,2,aligned,1019,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,98780,20,2,0,0,82,3
+19,tcmalloc,4,aligned,1019,stall,main:none handler:posix_memalign in_handler=1,28,98581,371,69,0,0,1704,3
+19,tbbmalloc,4,aligned,1019,crash,SIGSEGV,1137,,,,,,,-11
+19,scudo,2,aligned,1019,corruption,content,923,43829,42125,1739,0,0,81122,4
+19,tbbmalloc,2,aligned,1019,stall,main:calloc handler:posix_memalign in_handler=1,28,98499,41,7,0,0,192,3
+19,scudo,1,aligned,1019,survived,,5037,236794,228125,7790,0,0,303129,0
+19,scudo,4,aligned,1019,survived,,5037,240496,232843,13667,0,0,1008670,0
+19,snmalloc,4,aligned,1019,crash,SIGSEGV,1236,,,,,,,-11
+19,snmalloc,1,aligned,1019,survived,,5021,237516,233651,7444,0,0,282624,0
+19,snmalloc,2,aligned,1019,crash,SIGSEGV,5898,,,,,,,-11
+19,hardened_malloc,1,aligned,1019,stall,main:malloc handler:posix_memalign in_handler=1,28,98602,3,3,0,0,12,3
+19,hardened_malloc,2,aligned,1019,stall,main:malloc handler:posix_memalign in_handler=1,28,98577,2639,278,0,0,3184,3
+19,hardened_malloc,4,aligned,1019,stall,main:free handler:posix_memalign in_handler=1,88,101449,5457,739,0,0,20079,3
+19,glibc,1,aligned,1019,stall,main:calloc handler:posix_memalign in_handler=1,28,98771,13,1,0,0,46,3
+19,glibc,2,aligned,1019,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,98795,8,2,0,0,46,3
+19,glibc,4,aligned,1019,stall,main:malloc handler:posix_memalign in_handler=1,28,98443,21,4,0,0,217,3
+19,jemalloc,1,aligned,1019,stall,main:free handler:posix_memalign in_handler=1,29,98658,70,2,0,0,142,3
+19,jemalloc,4,aligned,1019,crash,SIGSEGV,1117,,,,,,,-11
+19,jemalloc,2,aligned,1019,stall,main:malloc handler:posix_memalign in_handler=1,28,98560,811,18,0,0,2194,3
+19,mimalloc,1,aligned,1019,crash,SIGSEGV,1948,,,,,,,-11
+20,tbbmalloc,1,aligned,1020,crash,SIGSEGV,1430,,,,,,,-11
+20,tbbmalloc,2,aligned,1020,stall,main:malloc handler:posix_memalign in_handler=1,28,99435,522,73,0,0,1125,3
+19,mimalloc,2,aligned,1019,crash,SIGSEGV,3421,,,,,,,-11
+19,mimalloc,4,aligned,1019,crash,SIGSEGV,4100,,,,,,,-11
+20,tbbmalloc,4,aligned,1020,crash,SIGSEGV,3073,,,,,,,-11
+20,snmalloc,1,aligned,1020,corruption,content,2908,139831,137309,5028,0,0,172031,4
+20,scudo,1,aligned,1020,survived,,5020,239914,230451,7916,0,0,290158,0
+20,scudo,2,aligned,1020,survived,,5039,238354,230499,9868,0,0,517226,0
+20,scudo,4,aligned,1020,survived,,5020,238536,230526,13417,0,0,1021362,0
+20,snmalloc,4,aligned,1020,crash,SIGSEGV,1125,,,,,,,-11
+20,hardened_malloc,1,aligned,1020,stall,main:free handler:posix_memalign in_handler=1,28,99179,432,68,0,0,550,3
+20,snmalloc,2,aligned,1020,crash,SIGSEGV,2193,,,,,,,-11
+20,hardened_malloc,2,aligned,1020,stall,main:malloc handler:posix_memalign in_handler=1,28,99297,2640,263,0,0,6051,3
+20,hardened_malloc,4,aligned,1020,stall,main:calloc handler:posix_memalign in_handler=1,28,99168,5365,630,0,0,20573,3
+20,glibc,1,aligned,1020,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,99169,8,1,0,0,12,3
+20,glibc,2,aligned,1020,stall,main:malloc handler:posix_memalign in_handler=1,26,99208,138,3,0,0,306,3
+20,glibc,4,aligned,1020,stall,main:malloc handler:posix_memalign in_handler=1,28,99237,43,4,0,0,168,3
+20,jemalloc,1,aligned,1020,stall,main:malloc handler:posix_memalign in_handler=1,28,99247,22,1,0,0,61,3
+20,jemalloc,2,aligned,1020,stall,main:malloc handler:posix_memalign in_handler=1,27,99176,1365,29,0,0,2930,3
+20,jemalloc,4,aligned,1020,stall,main:malloc handler:posix_memalign in_handler=1,29,99208,540,20,0,0,1893,3
+20,mimalloc,2,aligned,1020,crash,SIGSEGV,1903,,,,,,,-11
+20,mimalloc,4,aligned,1020,crash,SIGSEGV,1992,,,,,,,-11
+20,tcmalloc,1,aligned,1020,stall,main:malloc handler:posix_memalign in_handler=1,28,99206,10,1,0,0,17,3
+20,tcmalloc,2,aligned,1020,stall,main:none handler:posix_memalign in_handler=1,29,99283,69,13,0,0,260,3
+20,mimalloc,1,aligned,1020,survived,,5021,240496,239517,5511,0,0,438272,0
+20,tcmalloc,4,aligned,1020,stall,main:malloc handler:posix_memalign in_handler=1,27,99043,119,22,0,0,543,3
+21,scudo,1,aligned,1021,survived,,5038,240862,230462,8181,0,0,273767,0
+21,snmalloc,2,aligned,1021,corruption,content,80,3846,3714,270,0,0,9054,4
+21,scudo,2,aligned,1021,stall,main:malloc handler:posix_memalign in_handler=1,2536,219071,117149,5050,0,0,215500,3
+21,snmalloc,4,aligned,1021,crash,SIGSEGV,1335,,,,,,,-11
+21,scudo,4,aligned,1021,survived,,5036,235984,228700,13423,0,0,965070,0
+21,snmalloc,1,aligned,1021,crash,SIGSEGV,5576,,,,,,,-11
+21,hardened_malloc,1,aligned,1021,stall,main:malloc handler:posix_memalign in_handler=1,47,99767,1565,175,0,0,692,3
+21,hardened_malloc,2,aligned,1021,stall,main:malloc handler:posix_memalign in_handler=1,27,98484,846,128,0,0,849,3
+21,hardened_malloc,4,aligned,1021,stall,main:calloc handler:posix_memalign in_handler=1,28,98767,3456,485,0,0,8902,3
+21,glibc,1,aligned,1021,stall,main:posix_memalign handler:posix_memalign in_handler=1,27,98728,5,1,0,0,10,3
+21,glibc,2,aligned,1021,stall,main:calloc handler:posix_memalign in_handler=1,27,98630,4,2,0,0,64,3
+21,glibc,4,aligned,1021,stall,main:malloc handler:posix_memalign in_handler=1,27,98503,49,4,0,0,322,3
+21,jemalloc,2,aligned,1021,crash,SIGSEGV,1094,,,,,,,-11
+21,jemalloc,1,aligned,1021,stall,main:malloc handler:posix_memalign in_handler=1,28,98569,69,7,0,0,122,3
+21,jemalloc,4,aligned,1021,stall,main:realloc handler:posix_memalign in_handler=1,26,98613,845,20,0,0,4777,3
+21,mimalloc,2,aligned,1021,crash,SIGSEGV,1703,,,,,,,-11
+21,mimalloc,4,aligned,1021,crash,SIGSEGV,2304,,,,,,,-11
+21,tcmalloc,1,aligned,1021,stall,main:malloc handler:posix_memalign in_handler=1,28,98905,69,8,0,0,166,3
+21,tcmalloc,2,aligned,1021,stall,main:malloc handler:posix_memalign in_handler=1,28,98854,147,24,0,0,502,3
+21,mimalloc,1,aligned,1021,crash,SIGSEGV,4112,,,,,,,-11
+21,tcmalloc,4,aligned,1021,stall,main:malloc handler:posix_memalign in_handler=1,28,98998,578,59,0,0,2485,3
+21,tbbmalloc,1,aligned,1021,crash,SIGSEGV,2075,,,,,,,-11
+21,tbbmalloc,2,aligned,1021,crash,SIGSEGV,2335,,,,,,,-11
+21,tbbmalloc,4,aligned,1021,crash,SIGSEGV,3056,,,,,,,-11
+22,snmalloc,2,aligned,1022,crash,SIGSEGV,3052,,,,,,,-11
+22,snmalloc,4,aligned,1022,crash,SIGSEGV,3052,,,,,,,-11
+22,hardened_malloc,1,aligned,1022,stall,main:posix_memalign handler:posix_memalign in_handler=1,25,99116,686,109,0,0,383,3
+22,snmalloc,1,aligned,1022,crash,SIGSEGV,5377,,,,,,,-11
+22,hardened_malloc,2,aligned,1022,stall,main:malloc handler:posix_memalign in_handler=1,48,99956,4069,429,0,0,9471,3
+22,glibc,1,aligned,1022,stall,main:malloc handler:posix_memalign in_handler=1,28,99023,7,1,0,0,15,3
+22,hardened_malloc,4,aligned,1022,stall,main:malloc handler:posix_memalign in_handler=1,28,98976,7267,872,0,0,30459,3
+22,glibc,2,aligned,1022,stall,main:malloc handler:posix_memalign in_handler=1,28,99027,21,2,0,0,43,3
+22,glibc,4,aligned,1022,stall,main:malloc handler:posix_memalign in_handler=1,28,98976,79,4,0,0,361,3
+22,jemalloc,2,aligned,1022,crash,SIGSEGV,1102,,,,,,,-11
+22,jemalloc,1,aligned,1022,stall,main:malloc handler:posix_memalign in_handler=1,28,99061,80,3,0,0,112,3
+22,mimalloc,2,aligned,1022,crash,SIGSEGV,1426,,,,,,,-11
+22,jemalloc,4,aligned,1022,stall,main:calloc handler:posix_memalign in_handler=1,28,99032,474,12,0,0,2318,3
+22,mimalloc,1,aligned,1022,crash,SIGSEGV,2525,,,,,,,-11
+22,tcmalloc,1,aligned,1022,stall,main:calloc handler:posix_memalign in_handler=1,28,99165,369,50,0,0,463,3
+22,mimalloc,4,aligned,1022,crash,SIGSEGV,2553,,,,,,,-11
+22,tcmalloc,2,aligned,1022,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,99219,14,2,0,0,30,3
+22,tcmalloc,4,aligned,1022,stall,main:malloc handler:posix_memalign in_handler=1,27,99008,72,17,0,0,327,3
+22,tbbmalloc,1,aligned,1022,crash,SIGSEGV,1140,,,,,,,-11
+22,tbbmalloc,2,aligned,1022,stall,main:malloc handler:posix_memalign in_handler=1,28,99062,205,100,0,0,260,3
+22,tbbmalloc,4,aligned,1022,crash,SIGSEGV,1682,,,,,,,-11
+22,scudo,4,aligned,1022,corruption,content,1767,84874,82040,4653,0,0,308495,4
+23,hardened_malloc,1,aligned,1023,stall,main:malloc handler:posix_memalign in_handler=1,28,98855,16,14,0,0,8,3
+22,scudo,2,aligned,1022,stall,main:none handler:posix_memalign in_handler=1,1693,178249,77661,3205,0,0,146671,3
+23,hardened_malloc,2,aligned,1023,stall,main:malloc handler:posix_memalign in_handler=1,28,98973,965,115,0,0,1873,3
+22,scudo,1,aligned,1022,survived,,5039,240840,232543,7505,0,0,328070,0
+23,hardened_malloc,4,aligned,1023,stall,main:malloc handler:posix_memalign in_handler=1,48,99816,2274,325,0,0,5427,3
+23,glibc,1,aligned,1023,stall,main:malloc handler:posix_memalign in_handler=1,28,98875,2,1,0,0,6,3
+23,glibc,2,aligned,1023,stall,main:malloc handler:posix_memalign in_handler=1,28,99043,42,4,0,0,137,3
+23,glibc,4,aligned,1023,stall,main:calloc handler:posix_memalign in_handler=1,28,98964,32,4,0,0,185,3
+23,jemalloc,1,aligned,1023,stall,main:posix_memalign handler:posix_memalign in_handler=1,28,98882,236,4,0,0,340,3
+23,jemalloc,2,aligned,1023,stall,main:malloc handler:posix_memalign in_handler=1,27,98783,328,8,0,0,778,3
+23,mimalloc,1,aligned,1023,crash,SIGSEGV,1742,,,,,,,-11
+23,jemalloc,4,aligned,1023,stall,main:malloc handler:posix_memalign in_handler=1,28,98349,24941,24241,0,0,3323,3
+23,mimalloc,2,aligned,1023,crash,SIGSEGV,2720,,,,,,,-11
+23,tcmalloc,1,aligned,1023,stall,main:malloc handler:posix_memalign in_handler=1,28,98546,8,8,0,0,20,3
+23,tcmalloc,2,aligned,1023,stall,main:realloc handler:free in_handler=1,26,98678,601,52,0,0,1318,3
+23,mimalloc,4,aligned,1023,crash,SIGSEGV,3458,,,,,,,-11
+23,tcmalloc,4,aligned,1023,stall,main:none handler:posix_memalign in_handler=1,27,98901,79,6,0,0,343,3
+23,tbbmalloc,1,aligned,1023,crash,SIGSEGV,1503,,,,,,,-11
+23,tbbmalloc,2,aligned,1023,stall,main:malloc handler:posix_memalign in_handler=1,28,99063,499,48,0,0,943,3
+23,tbbmalloc,4,aligned,1023,crash,SIGSEGV,2054,,,,,,,-11
+23,snmalloc,1,aligned,1023,crash,SIGSEGV,1679,,,,,,,-11
+23,snmalloc,2,aligned,1023,crash,SIGSEGV,1225,,,,,,,-11
+23,scudo,1,aligned,1023,survived,,5037,239428,230298,7811,0,0,299008,0
+23,scudo,2,aligned,1023,survived,,5020,239278,231497,9598,0,0,479647,0
+23,snmalloc,4,aligned,1023,crash,SIGSEGV,1175,,,,,,,-11
+23,scudo,4,aligned,1023,stall,main:malloc handler:posix_memalign in_handler=1,2715,225607,149007,31570,0,0,508333,3
+24,glibc,1,aligned,1024,stall,main:calloc handler:posix_memalign in_handler=1,28,99204,146,1,0,0,30,3
+24,glibc,2,aligned,1024,stall,main:malloc handler:posix_memalign in_handler=1,28,99104,157,6,0,0,299,3
+24,glibc,4,aligned,1024,stall,main:malloc handler:posix_memalign in_handler=1,28,99181,158,6,0,0,737,3
+24,jemalloc,1,aligned,1024,stall,main:realloc handler:posix_memalign in_handler=1,48,100242,1171,16,0,0,1095,3
+24,jemalloc,4,aligned,1024,crash,SIGSEGV,1105,,,,,,,-11
+24,jemalloc,2,aligned,1024,stall,main:malloc handler:posix_memalign in_handler=1,28,99163,441,7,0,0,784,3
+24,mimalloc,1,aligned,1024,crash,SIGSEGV,2269,,,,,,,-11
+24,mimalloc,2,aligned,1024,crash,SIGSEGV,3093,,,,,,,-11
+24,tcmalloc,1,aligned,1024,stall,main:malloc handler:posix_memalign in_handler=1,26,98834,561,50,0,0,504,3
+24,tcmalloc,2,aligned,1024,stall,main:realloc handler:posix_memalign in_handler=1,28,99362,774,34,0,0,1354,3
+24,mimalloc,4,aligned,1024,crash,SIGSEGV,3385,,,,,,,-11
+24,tcmalloc,4,aligned,1024,stall,main:malloc handler:posix_memalign in_handler=1,28,98881,200,25,0,0,752,3
+24,tbbmalloc,1,aligned,1024,crash,SIGSEGV,1707,,,,,,,-11
+24,tbbmalloc,2,aligned,1024,stall,main:malloc handler:posix_memalign in_handler=1,26,98859,14,6,0,0,33,3
+24,tbbmalloc,4,aligned,1024,stall,main:calloc handler:posix_memalign in_handler=1,27,97956,568,55,0,0,1724,3
+24,scudo,1,aligned,1024,survived,,5034,237290,227666,7558,0,0,211627,0
+24,scudo,2,aligned,1024,survived,,5036,241240,233302,9907,0,0,453161,0
+24,snmalloc,1,aligned,1024,survived,,5038,239373,235146,7691,0,0,286720,0
+24,snmalloc,4,aligned,1024,crash,SIGSEGV,1137,,,,,,,-11
+24,snmalloc,2,aligned,1024,crash,SIGSEGV,2186,,,,,,,-11
+24,scudo,4,aligned,1024,stall,main:none handler:posix_memalign in_handler=1,4305,241200,199408,11738,0,0,967651,3
+24,hardened_malloc,2,aligned,1024,stall,main:malloc handler:posix_memalign in_handler=1,26,99231,914,111,0,0,1103,3
+24,hardened_malloc,1,aligned,1024,stall,main:free handler:posix_memalign in_handler=1,128,103958,4866,390,0,0,4523,3
+24,hardened_malloc,4,aligned,1024,stall,main:realloc handler:posix_memalign in_handler=1,68,100920,2991,441,0,0,7511,3
+25,jemalloc,1,aligned,1025,stall,main:malloc handler:free in_handler=1,26,98878,182,4,0,0,265,3
+25,jemalloc,2,aligned,1025,stall,main:calloc handler:posix_memalign in_handler=1,27,98821,56,2,0,0,109,3
+25,jemalloc,4,aligned,1025,stall,main:malloc handler:posix_memalign in_handler=1,27,99099,2214,66,0,0,12268,3
+25,mimalloc,2,aligned,1025,crash,SIGSEGV,1358,,,,,,,-11
+25,mimalloc,4,aligned,1025,crash,SIGSEGV,1431,,,,,,,-11
+25,tcmalloc,1,aligned,1025,stall,main:calloc handler:posix_memalign in_handler=1,28,99171,380,46,0,0,416,3
+25,tcmalloc,2,aligned,1025,stall,main:free handler:free in_handler=1,108,102708,4649,653,0,0,8533,3
+25,tbbmalloc,1,aligned,1025,crash,SIGSEGV,1154,,,,,,,-11
+25,tcmalloc,4,aligned,1025,stall,main:none handler:posix_memalign in_handler=1,29,98565,222,29,0,0,790,3
+25,tbbmalloc,2,aligned,1025,crash,SIGSEGV,1703,,,,,,,-11
+25,scudo,2,aligned,1025,corruption,content,562,26993,26261,1114,0,0,66373,4
+25,tbbmalloc,4,aligned,1025,crash,SIGSEGV,2042,,,,,,,-11
+25,snmalloc,1,aligned,1025,corruption,content,60,2808,2676,239,0,0,2379,4
+25,mimalloc,1,aligned,1025,crash,SIGSEGV,7244,,,,,,,-11
+25,scudo,1,aligned,1025,stall,main:posix_memalign handler:posix_memalign in_handler=1,1052,148434,47991,1506,0,0,68175,3
+25,snmalloc,2,aligned,1025,crash,SIGSEGV,2010,,,,,,,-11
+25,hardened_malloc,1,aligned,1025,stall,main:malloc handler:posix_memalign in_handler=1,25,98704,267,46,0,0,241,3
+25,snmalloc,4,aligned,1025,stall,main:calloc handler:posix_memalign in_handler=1,991,141196,116862,37619,0,0,431090,3
+25,hardened_malloc,2,aligned,1025,stall,main:free handler:posix_memalign in_handler=1,46,98181,2417,315,0,0,3397,3
+25,scudo,4,aligned,1025,survived,,5037,240304,233743,13299,0,0,1029921,0
+25,hardened_malloc,4,aligned,1025,stall,main:free handler:posix_memalign in_handler=1,66,99524,28702,23320,0,0,17315,3
+25,glibc,1,aligned,1025,stall,main:malloc handler:posix_memalign in_handler=1,27,99084,104,4,0,0,100,3
+25,glibc,2,aligned,1025,stall,main:malloc handler:posix_memalign in_handler=1,26,99044,24,4,0,0,130,3
+25,glibc,4,aligned,1025,stall,main:malloc handler:posix_memalign in_handler=1,27,98939,94,5,0,0,244,3
+26,mimalloc,2,aligned,1026,crash,SIGSEGV,1434,,,,,,,-11
+26,mimalloc,1,aligned,1026,crash,SIGSEGV,3143,,,,,,,-11
+26,tcmalloc,1,aligned,1026,stall,main:free handler:free in_handler=1,28,99123,336,27,0,0,521,3
+26,tcmalloc,2,aligned,1026,stall,main:none handler:posix_memalign in_handler=1,28,99368,4,1,0,0,13,3
+26,mimalloc,4,aligned,1026,crash,SIGSEGV,3394,,,,,,,-11
+26,tbbmalloc,1,aligned,1026,crash,SIGSEGV,1901,,,,,,,-11
+26,tcmalloc,4,aligned,1026,stall,main:none handler:posix_memalign in_handler=1,28,99330,118,34,0,0,498,3
+26,tbbmalloc,2,aligned,1026,stall,main:calloc handler:posix_memalign in_handler=1,27,99260,385,101,0,0,939,3
+26,tbbmalloc,4,aligned,1026,crash,SIGSEGV,2024,,,,,,,-11
+26,scudo,2,aligned,1026,stall,main:malloc handler:posix_memalign in_handler=1,27,98996,10,5,0,0,15,3
+26,snmalloc,2,aligned,1026,corruption,content,501,23867,23373,1009,0,0,56210,4
+26,snmalloc,4,aligned,1026,stall,main:malloc handler:posix_memalign in_handler=1,32,95008,47079,47042,0,0,256,3
+26,scudo,1,aligned,1026,survived,,5023,237706,226942,8355,0,0,194921,0
+26,snmalloc,1,aligned,1026,crash,SIGSEGV,4997,,,,,,,-11
+26,scudo,4,aligned,1026,survived,,5038,234168,223368,14361,0,0,878130,0
+26,hardened_malloc,1,aligned,1026,stall,main:free handler:posix_memalign in_handler=1,66,100337,2365,321,0,0,2473,3
+26,hardened_malloc,2,aligned,1026,stall,main:malloc handler:posix_memalign in_handler=1,26,97498,475,80,0,0,670,3
+26,hardened_malloc,4,aligned,1026,stall,main:malloc handler:posix_memalign in_handler=1,28,98938,4740,768,0,0,12747,3
+26,glibc,1,aligned,1026,stall,main:calloc handler:posix_memalign in_handler=1,28,98949,23,1,0,0,53,3
+26,glibc,2,aligned,1026,stall,main:malloc handler:posix_memalign in_handler=1,27,99146,25,2,0,0,87,3
+26,glibc,4,aligned,1026,stall,main:malloc handler:posix_memalign in_handler=1,28,98882,96,5,0,0,403,3
+26,jemalloc,4,aligned,1026,crash,SIGSEGV,1118,,,,,,,-11
+26,jemalloc,1,aligned,1026,stall,main:malloc handler:posix_memalign in_handler=1,28,98963,79,5,0,0,134,3
+26,jemalloc,2,aligned,1026,stall,main:malloc handler:posix_memalign in_handler=1,28,98978,7,2,0,0,43,3
+27,tcmalloc,1,aligned,1027,stall,main:malloc handler:posix_memalign in_handler=1,27,99023,440,61,0,0,424,3
+27,tcmalloc,2,aligned,1027,stall,main:none handler:posix_memalign in_handler=1,27,97897,377,50,0,0,810,3
+27,tcmalloc,4,aligned,1027,stall,main:calloc handler:posix_memalign in_handler=1,27,98694,131,33,0,0,647,3
+27,tbbmalloc,1,aligned,1027,stall,main:calloc handler:posix_memalign in_handler=1,28,98788,491,63,0,0,464,3
+27,tbbmalloc,2,aligned,1027,crash,SIGSEGV,1168,,,,,,,-11
+27,tbbmalloc,4,aligned,1027,stall,main:malloc handler:posix_memalign in_handler=1,21,96898,242,98,0,0,639,3
+27,scudo,4,aligned,1027,stall,main:malloc handler:posix_memalign in_handler=1,2428,210461,101987,6778,0,0,356264,3
+27,scudo,2,aligned,1027,survived,,5030,234764,222014,10699,0,0,414996,0
+27,scudo,1,aligned,1027,stall,main:realloc handler:posix_memalign in_handler=1,3656,235475,161598,6467,0,0,129189,3
+27,snmalloc,1,aligned,1027,survived,,5036,238980,234290,8977,0,0,320315,0
+27,snmalloc,4,aligned,1027,crash,SIGSEGV,2044,,,,,,,-11
+27,hardened_malloc,1,aligned,1027,stall,main:free handler:posix_memalign in_handler=1,68,100017,2183,235,0,0,1603,3
+27,hardened_malloc,2,aligned,1027,stall,main:posix_memalign handler:posix_memalign in_handler=1,29,97499,676,124,0,0,869,3
+27,hardened_malloc,4,aligned,1027,stall,main:calloc handler:posix_memalign in_handler=1,26,98791,650,106,0,0,1892,3
+27,glibc,1,aligned,1027,stall,main:malloc handler:posix_memalign in_handler=1,28,98434,36,2,0,0,65,3
+27,snmalloc,2,aligned,1027,crash,SIGSEGV,5979,,,,,,,-11
+27,glibc,2,aligned,1027,stall,main:malloc handler:posix_memalign in_handler=1,27,98892,35,2,0,0,82,3
+27,glibc,4,aligned,1027,stall,main:malloc handler:posix_memalign in_handler=1,27,98748,60,4,0,0,314,3
+27,jemalloc,1,aligned,1027,stall,main:calloc handler:posix_memalign in_handler=1,27,99055,318,17,0,0,187,3
+27,jemalloc,2,aligned,1027,stall,main:realloc handler:posix_memalign in_handler=1,28,98912,388,15,0,0,787,3
+27,jemalloc,4,aligned,1027,stall,main:malloc handler:posix_memalign in_handler=1,29,98671,1221,80,0,0,4525,3
+27,mimalloc,2,aligned,1027,crash,SIGSEGV,1169,,,,,,,-11
+27,mimalloc,1,aligned,1027,crash,SIGSEGV,2815,,,,,,,-11
+27,mimalloc,4,aligned,1027,crash,SIGSEGV,2450,,,,,,,-11
+28,tbbmalloc,4,aligned,1028,stall,main:none handler:posix_memalign in_handler=1,27,97699,508,106,0,0,2153,3
+28,tbbmalloc,1,aligned,1028,crash,SIGSEGV,3210,,,,,,,-11
+28,tbbmalloc,2,aligned,1028,crash,SIGSEGV,4198,,,,,,,-11
+28,snmalloc,1,aligned,1028,crash,SIGSEGV,1377,,,,,,,-11
+28,scudo,4,aligned,1028,stall,main:malloc handler:posix_memalign in_handler=1,1295,157350,81073,28010,0,0,217293,3
+28,snmalloc,2,aligned,1028,crash,SIGSEGV,1437,,,,,,,-11
+28,scudo,1,aligned,1028,survived,,5038,236491,226203,8673,0,0,206186,0
+28,snmalloc,4,aligned,1028,crash,SIGSEGV,1592,,,,,,,-11
+28,scudo,2,aligned,1028,survived,,5039,237050,227685,11182,0,0,536771,0
+28,hardened_malloc,1,aligned,1028,stall,main:calloc handler:posix_memalign in_handler=1,29,99160,179,29,0,0,122,3
+28,hardened_malloc,2,aligned,1028,stall,main:realloc handler:posix_memalign in_handler=1,68,100705,1898,268,0,0,2844,3
+28,hardened_malloc,4,aligned,1028,stall,main:malloc handler:posix_memalign in_handler=1,28,98924,4486,570,0,0,19644,3
+28,glibc,1,aligned,1028,stall,main:malloc handler:posix_memalign in_handler=1,28,98999,4,1,0,0,16,3
+28,glibc,2,aligned,1028,stall,main:malloc handler:posix_memalign in_handler=1,27,99191,24,2,0,0,59,3
+28,glibc,4,aligned,1028,stall,main:posix_memalign handler:posix_memalign in_handler=1,7,98082,30,4,0,0,202,3
+28,jemalloc,2,aligned,1028,crash,SIGSEGV,1095,,,,,,,-11
+28,jemalloc,1,aligned,1028,stall,main:posix_memalign handler:posix_memalign in_handler=1,29,98994,70,1,0,0,100,3
+28,mimalloc,1,aligned,1028,crash,SIGSEGV,1834,,,,,,,-11
+28,jemalloc,4,aligned,1028,stall,main:malloc handler:posix_memalign in_handler=1,28,99181,712,21,0,0,4017,3
+28,mimalloc,2,aligned,1028,crash,SIGSEGV,2848,,,,,,,-11
+28,tcmalloc,1,aligned,1028,stall,main:malloc handler:posix_memalign in_handler=1,28,98975,12,2,0,0,38,3
+28,mimalloc,4,aligned,1028,crash,SIGSEGV,2993,,,,,,,-11
+28,tcmalloc,2,aligned,1028,stall,main:none handler:posix_memalign in_handler=1,28,99189,182,29,0,0,525,3
+28,tcmalloc,4,aligned,1028,stall,main:malloc handler:posix_memalign in_handler=1,27,98890,8,5,0,0,53,3
+29,snmalloc,1,aligned,1029,corruption,content,722,34713,34116,1150,0,0,54493,4
+29,scudo,2,aligned,1029,corruption,content,1746,82240,79272,3414,0,0,149620,4
+29,snmalloc,2,aligned,1029,crash,SIGSEGV,1163,,,,,,,-11
+29,snmalloc,4,aligned,1029,crash,SIGSEGV,2191,,,,,,,-11
+29,hardened_malloc,1,aligned,1029,stall,main:calloc handler:posix_memalign in_handler=1,27,97248,372,57,0,0,203,3
+29,scudo,1,aligned,1029,survived,,5031,238564,227394,8080,0,0,298246,0
+29,scudo,4,aligned,1029,survived,,5021,238480,230200,13701,0,0,976302,0
+29,hardened_malloc,2,aligned,1029,stall,main:malloc handler:posix_memalign in_handler=1,28,98198,859,143,0,0,1056,3
+29,hardened_malloc,4,aligned,1029,stall,main:none handler:posix_memalign in_handler=1,48,99254,901,183,0,0,2539,3
+29,glibc,1,aligned,1029,stall,main:calloc handler:posix_memalign in_handler=1,27,98332,4,1,0,0,2,3
+29,glibc,2,aligned,1029,stall,main:malloc handler:posix_memalign in_handler=1,28,98500,146,2,0,0,209,3
+29,glibc,4,aligned,1029,stall,main:malloc handler:posix_memalign in_handler=1,27,98330,137,6,0,0,659,3
+29,jemalloc,1,aligned,1029,stall,main:malloc handler:posix_memalign in_handler=1,28,98321,244,4,0,0,591,3
+29,jemalloc,2,aligned,1029,stall,main:malloc handler:posix_memalign in_handler=1,26,98302,202,7,0,0,401,3
+29,jemalloc,4,aligned,1029,stall,main:malloc handler:free in_handler=1,28,98523,395,9,0,0,2278,3
+29,mimalloc,4,aligned,1029,corruption,content,60,2854,2809,114,0,0,13499,4
+29,mimalloc,1,aligned,1029,crash,SIGSEGV,1361,,,,,,,-11
+29,tcmalloc,1,aligned,1029,stall,main:malloc handler:posix_memalign in_handler=1,28,98465,154,35,0,0,452,3
+29,tcmalloc,2,aligned,1029,stall,main:malloc handler:posix_memalign in_handler=1,28,98270,281,35,0,0,783,3
+29,tcmalloc,4,aligned,1029,stall,main:malloc handler:posix_memalign in_handler=1,28,97643,24,9,0,0,99,3
+29,tbbmalloc,4,aligned,1029,crash,SIGSEGV,1145,,,,,,,-11
+29,tbbmalloc,1,aligned,1029,stall,main:malloc handler:posix_memalign in_handler=1,27,98362,454,72,0,0,793,3
+29,tbbmalloc,2,aligned,1029,stall,main:malloc handler:posix_memalign in_handler=1,27,97788,360,87,0,0,771,3
+29,mimalloc,2,aligned,1029,crash,SIGSEGV,4555,,,,,,,-11

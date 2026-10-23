@@ -1,0 +1,722 @@
+[   1/720] trial 0 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[   2/720] trial 0 glibc            t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[   3/720] trial 0 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[   4/720] trial 0 jemalloc         t=1 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[   5/720] trial 0 mimalloc         t=1 aligned  crash        1367 ms  SIGSEGV
+[   6/720] trial 0 jemalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[   7/720] trial 0 jemalloc         t=4 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[   8/720] trial 0 mimalloc         t=2 aligned  crash        2735 ms  SIGSEGV
+[   9/720] trial 0 mimalloc         t=4 aligned  crash        2382 ms  SIGSEGV
+[  10/720] trial 0 tcmalloc         t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[  11/720] trial 0 tcmalloc         t=2 aligned  stall          49 ms  main:free handler:free in_handler=1
+[  12/720] trial 0 tcmalloc         t=4 aligned  stall          29 ms  main:free handler:free in_handler=1
+[  13/720] trial 0 tbbmalloc        t=1 aligned  crash        1125 ms  SIGSEGV
+[  14/720] trial 0 tbbmalloc        t=4 aligned  crash        1817 ms  SIGSEGV
+[  15/720] trial 0 tbbmalloc        t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[  16/720] trial 0 scudo            t=2 aligned  survived     5038 ms  
+[  17/720] trial 0 snmalloc         t=1 aligned  crash        4847 ms  SIGSEGV
+[  18/720] trial 0 scudo            t=4 aligned  survived     5038 ms  
+[  19/720] trial 0 scudo            t=1 aligned  stall        4484 ms  main:malloc handler:posix_memalign in_handler=1
+[  20/720] trial 0 snmalloc         t=2 aligned  crash        2041 ms  SIGSEGV
+[  21/720] trial 0 snmalloc         t=4 aligned  crash        2042 ms  SIGSEGV
+[  22/720] trial 0 hardened_malloc  t=1 aligned  stall          29 ms  main:calloc handler:posix_memalign in_handler=1
+[  23/720] trial 0 hardened_malloc  t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[  24/720] trial 0 hardened_malloc  t=4 aligned  stall          28 ms  main:realloc handler:posix_memalign in_handler=1
+[  25/720] trial 1 jemalloc         t=1 aligned  stall          27 ms  main:realloc handler:posix_memalign in_handler=1
+[  26/720] trial 1 jemalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  27/720] trial 1 jemalloc         t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[  28/720] trial 1 mimalloc         t=1 aligned  crash        1513 ms  SIGSEGV
+[  29/720] trial 1 mimalloc         t=4 aligned  crash        1901 ms  SIGSEGV
+[  30/720] trial 1 tcmalloc         t=1 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[  31/720] trial 1 tcmalloc         t=2 aligned  stall          28 ms  main:malloc handler:free in_handler=1
+[  32/720] trial 1 mimalloc         t=2 aligned  crash        3145 ms  SIGSEGV
+[  33/720] trial 1 tcmalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  34/720] trial 1 tbbmalloc        t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[  35/720] trial 1 tbbmalloc        t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  36/720] trial 1 tbbmalloc        t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  37/720] trial 1 scudo            t=1 aligned  survived     5036 ms  
+[  38/720] trial 1 scudo            t=2 aligned  survived     5038 ms  
+[  39/720] trial 1 scudo            t=4 aligned  survived     5034 ms  
+[  40/720] trial 1 snmalloc         t=1 aligned  survived     5021 ms  
+[  41/720] trial 1 snmalloc         t=2 aligned  crash        1385 ms  SIGSEGV
+[  42/720] trial 1 snmalloc         t=4 aligned  crash        1955 ms  SIGSEGV
+[  43/720] trial 1 hardened_malloc  t=1 aligned  stall          69 ms  main:calloc handler:posix_memalign in_handler=1
+[  44/720] trial 1 hardened_malloc  t=2 aligned  stall         128 ms  main:malloc handler:posix_memalign in_handler=1
+[  45/720] trial 1 hardened_malloc  t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[  46/720] trial 1 glibc            t=1 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[  47/720] trial 1 glibc            t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[  48/720] trial 1 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  49/720] trial 2 mimalloc         t=2 aligned  crash        1100 ms  SIGSEGV
+[  50/720] trial 2 mimalloc         t=4 aligned  crash        1820 ms  SIGSEGV
+[  51/720] trial 2 tcmalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  52/720] trial 2 tcmalloc         t=2 aligned  stall          48 ms  main:malloc handler:posix_memalign in_handler=1
+[  53/720] trial 2 mimalloc         t=1 aligned  survived     5037 ms  
+[  54/720] trial 2 tbbmalloc        t=1 aligned  crash        1115 ms  SIGSEGV
+[  55/720] trial 2 tcmalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  56/720] trial 2 tbbmalloc        t=2 aligned  crash        1983 ms  SIGSEGV
+[  57/720] trial 2 tbbmalloc        t=4 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[  58/720] trial 2 scudo            t=4 aligned  stall         490 ms  main:calloc handler:posix_memalign in_handler=1
+[  59/720] trial 2 scudo            t=2 aligned  corruption   3791 ms  content
+[  60/720] trial 2 snmalloc         t=4 aligned  crash        1221 ms  SIGSEGV
+[  61/720] trial 2 scudo            t=1 aligned  stall        3140 ms  main:malloc handler:posix_memalign in_handler=1
+[  62/720] trial 2 snmalloc         t=1 aligned  survived     5021 ms  
+[  63/720] trial 2 hardened_malloc  t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  64/720] trial 2 hardened_malloc  t=2 aligned  stall          48 ms  main:realloc handler:posix_memalign in_handler=1
+[  65/720] trial 2 hardened_malloc  t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[  66/720] trial 2 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  67/720] trial 2 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  68/720] trial 2 snmalloc         t=2 aligned  stall        5029 ms  main:malloc handler:none in_handler=0
+[  69/720] trial 2 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  70/720] trial 2 jemalloc         t=1 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[  71/720] trial 2 jemalloc         t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[  72/720] trial 2 jemalloc         t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[  73/720] trial 3 tcmalloc         t=1 aligned  stall          27 ms  main:realloc handler:posix_memalign in_handler=1
+[  74/720] trial 3 tcmalloc         t=2 aligned  stall          27 ms  main:none handler:posix_memalign in_handler=1
+[  75/720] trial 3 tcmalloc         t=4 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[  76/720] trial 3 tbbmalloc        t=1 aligned  crash        1116 ms  SIGSEGV
+[  77/720] trial 3 tbbmalloc        t=2 aligned  crash        1664 ms  SIGSEGV
+[  78/720] trial 3 tbbmalloc        t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[  79/720] trial 3 snmalloc         t=1 aligned  corruption    240 ms  content
+[  80/720] trial 3 snmalloc         t=2 aligned  crash        1273 ms  SIGSEGV
+[  81/720] trial 3 snmalloc         t=4 aligned  crash        1181 ms  SIGSEGV
+[  82/720] trial 3 scudo            t=1 aligned  survived     5037 ms  
+[  83/720] trial 3 scudo            t=2 aligned  stall        3684 ms  main:realloc handler:posix_memalign in_handler=1
+[  84/720] trial 3 scudo            t=4 aligned  survived     5037 ms  
+[  85/720] trial 3 hardened_malloc  t=1 aligned  stall          68 ms  main:free handler:posix_memalign in_handler=1
+[  86/720] trial 3 hardened_malloc  t=2 aligned  stall          88 ms  main:realloc handler:posix_memalign in_handler=1
+[  87/720] trial 3 hardened_malloc  t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[  88/720] trial 3 glibc            t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[  89/720] trial 3 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  90/720] trial 3 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[  91/720] trial 3 jemalloc         t=1 aligned  stall          29 ms  main:malloc handler:posix_memalign in_handler=1
+[  92/720] trial 3 mimalloc         t=1 aligned  crash        1373 ms  SIGSEGV
+[  93/720] trial 3 jemalloc         t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[  94/720] trial 3 jemalloc         t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[  95/720] trial 3 mimalloc         t=2 aligned  crash        1372 ms  SIGSEGV
+[  96/720] trial 4 tbbmalloc        t=1 aligned  crash        2007 ms  SIGSEGV
+[  97/720] trial 3 mimalloc         t=4 aligned  crash        3051 ms  SIGSEGV
+[  98/720] trial 4 tbbmalloc        t=2 aligned  crash        3846 ms  SIGSEGV
+[  99/720] trial 4 scudo            t=2 aligned  stall          29 ms  main:malloc handler:posix_memalign in_handler=1
+[ 100/720] trial 4 tbbmalloc        t=4 aligned  crash        4076 ms  SIGSEGV
+[ 101/720] trial 4 snmalloc         t=1 aligned  corruption   1003 ms  content
+[ 102/720] trial 4 scudo            t=1 aligned  survived     5022 ms  
+[ 103/720] trial 4 snmalloc         t=4 aligned  crash        1333 ms  SIGSEGV
+[ 104/720] trial 4 snmalloc         t=2 aligned  stall         449 ms  main:realloc handler:posix_memalign in_handler=1
+[ 105/720] trial 4 scudo            t=4 aligned  survived     5020 ms  
+[ 106/720] trial 4 hardened_malloc  t=1 aligned  stall          48 ms  main:calloc handler:posix_memalign in_handler=1
+[ 107/720] trial 4 hardened_malloc  t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 108/720] trial 4 hardened_malloc  t=4 aligned  stall          69 ms  main:none handler:posix_memalign in_handler=1
+[ 109/720] trial 4 glibc            t=1 aligned  stall          26 ms  main:realloc handler:posix_memalign in_handler=1
+[ 110/720] trial 4 glibc            t=2 aligned  stall          28 ms  main:realloc handler:posix_memalign in_handler=1
+[ 111/720] trial 4 glibc            t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 112/720] trial 4 jemalloc         t=1 aligned  stall          27 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 113/720] trial 4 mimalloc         t=1 aligned  crash        1143 ms  SIGSEGV
+[ 114/720] trial 4 jemalloc         t=2 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 115/720] trial 4 jemalloc         t=4 aligned  stall          28 ms  main:realloc handler:posix_memalign in_handler=1
+[ 116/720] trial 4 mimalloc         t=2 aligned  crash        2225 ms  SIGSEGV
+[ 117/720] trial 4 mimalloc         t=4 aligned  crash        2286 ms  SIGSEGV
+[ 118/720] trial 4 tcmalloc         t=1 aligned  stall          27 ms  main:free handler:free in_handler=1
+[ 119/720] trial 4 tcmalloc         t=2 aligned  stall          68 ms  main:free handler:free in_handler=1
+[ 120/720] trial 4 tcmalloc         t=4 aligned  stall          27 ms  main:none handler:posix_memalign in_handler=1
+[ 121/720] trial 5 scudo            t=1 aligned  survived     5020 ms  
+[ 122/720] trial 5 scudo            t=2 aligned  survived     5036 ms  
+[ 123/720] trial 5 scudo            t=4 aligned  survived     5038 ms  
+[ 124/720] trial 5 snmalloc         t=1 aligned  survived     5039 ms  
+[ 125/720] trial 5 snmalloc         t=4 aligned  crash        1129 ms  SIGSEGV
+[ 126/720] trial 5 hardened_malloc  t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 127/720] trial 5 snmalloc         t=2 aligned  crash        2431 ms  SIGSEGV
+[ 128/720] trial 5 hardened_malloc  t=2 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 129/720] trial 5 hardened_malloc  t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 130/720] trial 5 glibc            t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 131/720] trial 5 glibc            t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 132/720] trial 5 glibc            t=4 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 133/720] trial 5 jemalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 134/720] trial 5 jemalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 135/720] trial 5 jemalloc         t=4 aligned  stall          30 ms  main:malloc handler:posix_memalign in_handler=1
+[ 136/720] trial 5 mimalloc         t=2 aligned  crash        1314 ms  SIGSEGV
+[ 137/720] trial 5 mimalloc         t=4 aligned  crash        1379 ms  SIGSEGV
+[ 138/720] trial 5 tcmalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 139/720] trial 5 tcmalloc         t=2 aligned  crash        2027 ms  SIGSEGV
+[ 140/720] trial 5 tcmalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 141/720] trial 5 mimalloc         t=1 aligned  crash        4763 ms  SIGSEGV
+[ 142/720] trial 5 tbbmalloc        t=1 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 143/720] trial 5 tbbmalloc        t=2 aligned  crash        2042 ms  SIGSEGV
+[ 144/720] trial 5 tbbmalloc        t=4 aligned  crash        2060 ms  SIGSEGV
+[ 145/720] trial 6 snmalloc         t=4 aligned  stall         149 ms  main:realloc handler:posix_memalign in_handler=1
+[ 146/720] trial 6 snmalloc         t=2 aligned  corruption   2550 ms  content
+[ 147/720] trial 6 hardened_malloc  t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 148/720] trial 6 hardened_malloc  t=2 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 149/720] trial 6 hardened_malloc  t=4 aligned  stall          49 ms  main:malloc handler:posix_memalign in_handler=1
+[ 150/720] trial 6 snmalloc         t=1 aligned  crash        5616 ms  SIGSEGV
+[ 151/720] trial 6 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 152/720] trial 6 glibc            t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 153/720] trial 6 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 154/720] trial 6 jemalloc         t=1 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 155/720] trial 6 jemalloc         t=2 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 156/720] trial 6 mimalloc         t=2 aligned  crash        1361 ms  SIGSEGV
+[ 157/720] trial 6 jemalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 158/720] trial 6 mimalloc         t=1 aligned  crash        2676 ms  SIGSEGV
+[ 159/720] trial 6 tcmalloc         t=1 aligned  stall          29 ms  main:malloc handler:posix_memalign in_handler=1
+[ 160/720] trial 6 tcmalloc         t=2 aligned  stall          28 ms  main:none handler:posix_memalign in_handler=1
+[ 161/720] trial 6 mimalloc         t=4 aligned  crash        3234 ms  SIGSEGV
+[ 162/720] trial 6 tcmalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 163/720] trial 6 tbbmalloc        t=2 aligned  crash        1150 ms  SIGSEGV
+[ 164/720] trial 6 tbbmalloc        t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 165/720] trial 6 tbbmalloc        t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 166/720] trial 7 hardened_malloc  t=1 aligned  stall          91 ms  main:malloc handler:posix_memalign in_handler=1
+[ 167/720] trial 6 scudo            t=1 aligned  survived     5037 ms  
+[ 168/720] trial 6 scudo            t=2 aligned  survived     5036 ms  
+[ 169/720] trial 7 hardened_malloc  t=2 aligned  stall          30 ms  main:malloc handler:posix_memalign in_handler=1
+[ 170/720] trial 7 hardened_malloc  t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 171/720] trial 6 scudo            t=4 aligned  stall        4304 ms  main:none handler:posix_memalign in_handler=1
+[ 172/720] trial 7 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 173/720] trial 7 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 174/720] trial 7 glibc            t=4 aligned  stall          27 ms  main:realloc handler:posix_memalign in_handler=1
+[ 175/720] trial 7 jemalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 176/720] trial 7 jemalloc         t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 177/720] trial 7 jemalloc         t=4 aligned  stall          28 ms  main:free-remote handler:posix_memalign in_handler=1
+[ 178/720] trial 7 mimalloc         t=1 aligned  crash        1404 ms  SIGSEGV
+[ 179/720] trial 7 mimalloc         t=4 aligned  crash        2030 ms  SIGSEGV
+[ 180/720] trial 7 tcmalloc         t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 181/720] trial 7 tcmalloc         t=2 aligned  stall          28 ms  main:none handler:posix_memalign in_handler=1
+[ 182/720] trial 7 mimalloc         t=2 aligned  crash        3197 ms  SIGSEGV
+[ 183/720] trial 7 tbbmalloc        t=1 aligned  crash        1974 ms  SIGSEGV
+[ 184/720] trial 7 tcmalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 185/720] trial 7 tbbmalloc        t=2 aligned  stall          27 ms  main:none handler:posix_memalign in_handler=1
+[ 186/720] trial 7 tbbmalloc        t=4 aligned  crash        2039 ms  SIGSEGV
+[ 187/720] trial 7 scudo            t=2 aligned  stall         911 ms  main:malloc handler:posix_memalign in_handler=1
+[ 188/720] trial 7 snmalloc         t=1 aligned  corruption   1988 ms  content
+[ 189/720] trial 7 snmalloc         t=2 aligned  crash        1200 ms  SIGSEGV
+[ 190/720] trial 7 scudo            t=1 aligned  survived     5040 ms  
+[ 191/720] trial 7 snmalloc         t=4 aligned  crash        2132 ms  SIGSEGV
+[ 192/720] trial 7 scudo            t=4 aligned  stall        2234 ms  main:none handler:posix_memalign in_handler=1
+[ 193/720] trial 8 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 194/720] trial 8 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 195/720] trial 8 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 196/720] trial 8 jemalloc         t=1 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 197/720] trial 8 jemalloc         t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 198/720] trial 8 jemalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 199/720] trial 8 mimalloc         t=2 aligned  crash        2124 ms  SIGSEGV
+[ 200/720] trial 8 mimalloc         t=1 aligned  crash        3246 ms  SIGSEGV
+[ 201/720] trial 8 tcmalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 202/720] trial 8 tcmalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 203/720] trial 8 mimalloc         t=4 aligned  crash        3262 ms  SIGSEGV
+[ 204/720] trial 8 tcmalloc         t=4 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 205/720] trial 8 tbbmalloc        t=2 aligned  crash        1117 ms  SIGSEGV
+[ 206/720] trial 8 tbbmalloc        t=1 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 207/720] trial 8 tbbmalloc        t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 208/720] trial 8 scudo            t=4 aligned  corruption    581 ms  content
+[ 209/720] trial 8 scudo            t=1 aligned  stall        3420 ms  main:realloc handler:posix_memalign in_handler=1
+[ 210/720] trial 8 snmalloc         t=1 aligned  survived     5020 ms  
+[ 211/720] trial 8 snmalloc         t=4 aligned  corruption    803 ms  content
+[ 212/720] trial 8 scudo            t=2 aligned  stall        4665 ms  main:malloc handler:posix_memalign in_handler=1
+[ 213/720] trial 8 hardened_malloc  t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 214/720] trial 8 hardened_malloc  t=2 aligned  stall          48 ms  main:none handler:posix_memalign in_handler=1
+[ 215/720] trial 8 snmalloc         t=2 aligned  stall        5009 ms  main:calloc handler:none in_handler=0
+[ 216/720] trial 8 hardened_malloc  t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 217/720] trial 9 mimalloc         t=1 aligned  crash        1084 ms  SIGSEGV
+[ 218/720] trial 9 jemalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 219/720] trial 9 jemalloc         t=2 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 220/720] trial 9 jemalloc         t=4 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 221/720] trial 9 mimalloc         t=4 aligned  crash        1389 ms  SIGSEGV
+[ 222/720] trial 9 tcmalloc         t=1 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 223/720] trial 9 tcmalloc         t=2 aligned  stall          28 ms  main:none handler:posix_memalign in_handler=1
+[ 224/720] trial 9 mimalloc         t=2 aligned  crash        2618 ms  SIGSEGV
+[ 225/720] trial 9 tbbmalloc        t=2 aligned  crash        1146 ms  SIGSEGV
+[ 226/720] trial 9 tcmalloc         t=4 aligned  stall          26 ms  main:none handler:posix_memalign in_handler=1
+[ 227/720] trial 9 tbbmalloc        t=1 aligned  crash        2194 ms  SIGSEGV
+[ 228/720] trial 9 tbbmalloc        t=4 aligned  crash        3089 ms  SIGSEGV
+[ 229/720] trial 9 snmalloc         t=1 aligned  corruption    361 ms  content
+[ 230/720] trial 9 scudo            t=2 aligned  stall        2578 ms  main:malloc handler:posix_memalign in_handler=1
+[ 231/720] trial 9 snmalloc         t=2 aligned  crash        2375 ms  SIGSEGV
+[ 232/720] trial 9 snmalloc         t=4 aligned  corruption    261 ms  content
+[ 233/720] trial 9 scudo            t=1 aligned  survived     5020 ms  
+[ 234/720] trial 9 scudo            t=4 aligned  survived     5039 ms  
+[ 235/720] trial 9 hardened_malloc  t=1 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 236/720] trial 9 hardened_malloc  t=2 aligned  stall          49 ms  main:malloc handler:posix_memalign in_handler=1
+[ 237/720] trial 9 hardened_malloc  t=4 aligned  stall          27 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 238/720] trial 9 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 239/720] trial 9 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 240/720] trial 9 glibc            t=4 aligned  stall           8 ms  main:malloc handler:posix_memalign in_handler=1
+[ 241/720] trial 10 mimalloc         t=2 aligned  crash        1548 ms  SIGSEGV
+[ 242/720] trial 10 mimalloc         t=1 aligned  crash        3630 ms  SIGSEGV
+[ 243/720] trial 10 tcmalloc         t=1 aligned  stall          29 ms  main:malloc handler:posix_memalign in_handler=1
+[ 244/720] trial 10 tcmalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 245/720] trial 10 tbbmalloc        t=1 aligned  crash        1100 ms  SIGSEGV
+[ 246/720] trial 10 tcmalloc         t=4 aligned  stall          28 ms  main:none handler:posix_memalign in_handler=1
+[ 247/720] trial 10 mimalloc         t=4 aligned  crash        4232 ms  SIGSEGV
+[ 248/720] trial 10 tbbmalloc        t=2 aligned  crash        2422 ms  SIGSEGV
+[ 249/720] trial 10 tbbmalloc        t=4 aligned  crash        3069 ms  SIGSEGV
+[ 250/720] trial 10 scudo            t=1 aligned  stall        1254 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 251/720] trial 10 scudo            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 252/720] trial 10 snmalloc         t=4 aligned  corruption    220 ms  content
+[ 253/720] trial 10 snmalloc         t=2 aligned  crash        1205 ms  SIGSEGV
+[ 254/720] trial 10 scudo            t=2 aligned  survived     5021 ms  
+[ 255/720] trial 10 hardened_malloc  t=1 aligned  stall          48 ms  main:calloc handler:posix_memalign in_handler=1
+[ 256/720] trial 10 hardened_malloc  t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 257/720] trial 10 snmalloc         t=1 aligned  survived     5021 ms  
+[ 258/720] trial 10 hardened_malloc  t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 259/720] trial 10 glibc            t=1 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 260/720] trial 10 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 261/720] trial 10 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 262/720] trial 10 jemalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 263/720] trial 10 jemalloc         t=2 aligned  stall          28 ms  main:free handler:posix_memalign in_handler=1
+[ 264/720] trial 10 jemalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 265/720] trial 11 tcmalloc         t=2 aligned  crash        1143 ms  SIGSEGV
+[ 266/720] trial 11 tcmalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 267/720] trial 11 tbbmalloc        t=1 aligned  crash        1120 ms  SIGSEGV
+[ 268/720] trial 11 tcmalloc         t=4 aligned  stall          28 ms  main:none handler:posix_memalign in_handler=1
+[ 269/720] trial 11 tbbmalloc        t=2 aligned  crash        2080 ms  SIGSEGV
+[ 270/720] trial 11 tbbmalloc        t=4 aligned  crash        2233 ms  SIGSEGV
+[ 271/720] trial 11 scudo            t=2 aligned  stall        1474 ms  main:malloc handler:posix_memalign in_handler=1
+[ 272/720] trial 11 snmalloc         t=2 aligned  crash        1210 ms  SIGSEGV
+[ 273/720] trial 11 scudo            t=1 aligned  survived     5020 ms  
+[ 274/720] trial 11 scudo            t=4 aligned  survived     5038 ms  
+[ 275/720] trial 11 snmalloc         t=4 aligned  crash        1830 ms  SIGSEGV
+[ 276/720] trial 11 hardened_malloc  t=1 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 277/720] trial 11 snmalloc         t=1 aligned  survived     5040 ms  
+[ 278/720] trial 11 hardened_malloc  t=2 aligned  stall          48 ms  main:calloc handler:posix_memalign in_handler=1
+[ 279/720] trial 11 hardened_malloc  t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 280/720] trial 11 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 281/720] trial 11 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 282/720] trial 11 glibc            t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 283/720] trial 11 jemalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 284/720] trial 11 jemalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 285/720] trial 11 jemalloc         t=4 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 286/720] trial 11 mimalloc         t=1 aligned  crash        2088 ms  SIGSEGV
+[ 287/720] trial 12 tbbmalloc        t=1 aligned  crash        2081 ms  SIGSEGV
+[ 288/720] trial 12 tbbmalloc        t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 289/720] trial 11 mimalloc         t=4 aligned  crash        3174 ms  SIGSEGV
+[ 290/720] trial 12 tbbmalloc        t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 291/720] trial 11 mimalloc         t=2 aligned  crash        4590 ms  SIGSEGV
+[ 292/720] trial 12 scudo            t=4 aligned  stall          29 ms  main:malloc handler:posix_memalign in_handler=1
+[ 293/720] trial 12 scudo            t=1 aligned  stall        1895 ms  main:malloc handler:posix_memalign in_handler=1
+[ 294/720] trial 12 snmalloc         t=2 aligned  crash        1963 ms  SIGSEGV
+[ 295/720] trial 12 scudo            t=2 aligned  survived     5020 ms  
+[ 296/720] trial 12 snmalloc         t=1 aligned  survived     5039 ms  
+[ 297/720] trial 12 snmalloc         t=4 aligned  stall         270 ms  main:none handler:posix_memalign in_handler=1
+[ 298/720] trial 12 hardened_malloc  t=1 aligned  stall          49 ms  main:malloc handler:posix_memalign in_handler=1
+[ 299/720] trial 12 hardened_malloc  t=2 aligned  stall          49 ms  main:calloc handler:posix_memalign in_handler=1
+[ 300/720] trial 12 hardened_malloc  t=4 aligned  stall          27 ms  main:none handler:posix_memalign in_handler=1
+[ 301/720] trial 12 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 302/720] trial 12 glibc            t=2 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 303/720] trial 12 glibc            t=4 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 304/720] trial 12 jemalloc         t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 305/720] trial 12 jemalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 306/720] trial 12 jemalloc         t=4 aligned  stall          48 ms  main:free handler:posix_memalign in_handler=1
+[ 307/720] trial 12 mimalloc         t=4 aligned  crash        1175 ms  SIGSEGV
+[ 308/720] trial 12 mimalloc         t=2 aligned  crash        2290 ms  SIGSEGV
+[ 309/720] trial 12 tcmalloc         t=1 aligned  stall          29 ms  main:free handler:free in_handler=1
+[ 310/720] trial 12 tcmalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 311/720] trial 12 mimalloc         t=1 aligned  crash        5343 ms  SIGSEGV
+[ 312/720] trial 12 tcmalloc         t=4 aligned  stall          28 ms  main:realloc handler:posix_memalign in_handler=1
+[ 313/720] trial 13 scudo            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 314/720] trial 13 snmalloc         t=2 aligned  crash        1148 ms  SIGSEGV
+[ 315/720] trial 13 scudo            t=4 aligned  stall         330 ms  main:realloc handler:posix_memalign in_handler=1
+[ 316/720] trial 13 snmalloc         t=4 aligned  crash        1205 ms  SIGSEGV
+[ 317/720] trial 13 scudo            t=2 aligned  survived     5039 ms  
+[ 318/720] trial 13 hardened_malloc  t=1 aligned  stall         129 ms  main:free handler:posix_memalign in_handler=1
+[ 319/720] trial 13 snmalloc         t=1 aligned  survived     5038 ms  
+[ 320/720] trial 13 hardened_malloc  t=2 aligned  stall          29 ms  main:malloc handler:posix_memalign in_handler=1
+[ 321/720] trial 13 hardened_malloc  t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 322/720] trial 13 glibc            t=1 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 323/720] trial 13 glibc            t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 324/720] trial 13 glibc            t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 325/720] trial 13 jemalloc         t=1 aligned  stall          28 ms  main:malloc handler:free in_handler=1
+[ 326/720] trial 13 jemalloc         t=2 aligned  stall          28 ms  main:none handler:free in_handler=1
+[ 327/720] trial 13 jemalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 328/720] trial 13 mimalloc         t=2 aligned  crash        1810 ms  SIGSEGV
+[ 329/720] trial 13 mimalloc         t=4 aligned  crash        2384 ms  SIGSEGV
+[ 330/720] trial 13 tcmalloc         t=1 aligned  stall          29 ms  main:free handler:free in_handler=1
+[ 331/720] trial 13 tcmalloc         t=2 aligned  stall          48 ms  main:realloc handler:posix_memalign in_handler=1
+[ 332/720] trial 13 mimalloc         t=1 aligned  survived     5022 ms  
+[ 333/720] trial 13 tcmalloc         t=4 aligned  stall          28 ms  main:none handler:posix_memalign in_handler=1
+[ 334/720] trial 13 tbbmalloc        t=1 aligned  stall          47 ms  main:free handler:posix_memalign in_handler=1
+[ 335/720] trial 13 tbbmalloc        t=4 aligned  crash        1140 ms  SIGSEGV
+[ 336/720] trial 14 snmalloc         t=4 aligned  corruption    261 ms  content
+[ 337/720] trial 13 tbbmalloc        t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 338/720] trial 14 hardened_malloc  t=1 aligned  stall          29 ms  main:malloc handler:posix_memalign in_handler=1
+[ 339/720] trial 14 hardened_malloc  t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 340/720] trial 14 hardened_malloc  t=4 aligned  stall         108 ms  main:malloc handler:posix_memalign in_handler=1
+[ 341/720] trial 14 snmalloc         t=1 aligned  survived     5022 ms  
+[ 342/720] trial 14 glibc            t=1 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 343/720] trial 14 glibc            t=2 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 344/720] trial 14 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 345/720] trial 14 jemalloc         t=1 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 346/720] trial 14 snmalloc         t=2 aligned  stall        5047 ms  main:malloc handler:none in_handler=0
+[ 347/720] trial 14 mimalloc         t=2 aligned  crash        1177 ms  SIGSEGV
+[ 348/720] trial 14 jemalloc         t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 349/720] trial 14 jemalloc         t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 350/720] trial 14 mimalloc         t=1 aligned  crash        2359 ms  SIGSEGV
+[ 351/720] trial 14 mimalloc         t=4 aligned  crash        2041 ms  SIGSEGV
+[ 352/720] trial 14 tcmalloc         t=1 aligned  stall          26 ms  main:free handler:free in_handler=1
+[ 353/720] trial 14 tcmalloc         t=2 aligned  stall          27 ms  main:realloc handler:free in_handler=1
+[ 354/720] trial 14 tcmalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 355/720] trial 14 tbbmalloc        t=1 aligned  crash        2018 ms  SIGSEGV
+[ 356/720] trial 14 tbbmalloc        t=2 aligned  crash        2657 ms  SIGSEGV
+[ 357/720] trial 14 tbbmalloc        t=4 aligned  crash        3457 ms  SIGSEGV
+[ 358/720] trial 14 scudo            t=1 aligned  stall        2580 ms  main:realloc handler:posix_memalign in_handler=1
+[ 359/720] trial 15 hardened_malloc  t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 360/720] trial 14 scudo            t=2 aligned  survived     5039 ms  
+[ 361/720] trial 15 hardened_malloc  t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 362/720] trial 15 hardened_malloc  t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 363/720] trial 15 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 364/720] trial 14 scudo            t=4 aligned  stall        4325 ms  main:malloc handler:posix_memalign in_handler=1
+[ 365/720] trial 15 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 366/720] trial 15 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 367/720] trial 15 jemalloc         t=1 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 368/720] trial 15 jemalloc         t=2 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 369/720] trial 15 jemalloc         t=4 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 370/720] trial 15 mimalloc         t=2 aligned  crash        1382 ms  SIGSEGV
+[ 371/720] trial 15 mimalloc         t=4 aligned  crash        2125 ms  SIGSEGV
+[ 372/720] trial 15 tcmalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 373/720] trial 15 tcmalloc         t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 374/720] trial 15 tbbmalloc        t=1 aligned  crash        1145 ms  SIGSEGV
+[ 375/720] trial 15 mimalloc         t=1 aligned  survived     5020 ms  
+[ 376/720] trial 15 tcmalloc         t=4 aligned  stall          28 ms  main:none handler:posix_memalign in_handler=1
+[ 377/720] trial 15 tbbmalloc        t=2 aligned  crash        1362 ms  SIGSEGV
+[ 378/720] trial 15 tbbmalloc        t=4 aligned  crash        2073 ms  SIGSEGV
+[ 379/720] trial 15 scudo            t=1 aligned  survived     5037 ms  
+[ 380/720] trial 15 scudo            t=2 aligned  survived     5037 ms  
+[ 381/720] trial 15 scudo            t=4 aligned  survived     5035 ms  
+[ 382/720] trial 15 snmalloc         t=2 aligned  crash        1617 ms  SIGSEGV
+[ 383/720] trial 15 snmalloc         t=1 aligned  survived     5037 ms  
+[ 384/720] trial 15 snmalloc         t=4 aligned  crash        2276 ms  SIGSEGV
+[ 385/720] trial 16 glibc            t=1 aligned  stall          25 ms  main:malloc handler:posix_memalign in_handler=1
+[ 386/720] trial 16 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 387/720] trial 16 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 388/720] trial 16 jemalloc         t=1 aligned  stall          28 ms  main:realloc handler:posix_memalign in_handler=1
+[ 389/720] trial 16 jemalloc         t=2 aligned  stall          27 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 390/720] trial 16 jemalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 391/720] trial 16 mimalloc         t=2 aligned  crash        1306 ms  SIGSEGV
+[ 392/720] trial 16 mimalloc         t=1 aligned  crash        3226 ms  SIGSEGV
+[ 393/720] trial 16 tcmalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 394/720] trial 16 mimalloc         t=4 aligned  crash        3263 ms  SIGSEGV
+[ 395/720] trial 16 tcmalloc         t=2 aligned  stall          48 ms  main:free handler:posix_memalign in_handler=1
+[ 396/720] trial 16 tbbmalloc        t=1 aligned  crash        1301 ms  SIGSEGV
+[ 397/720] trial 16 tcmalloc         t=4 aligned  stall          27 ms  main:none handler:posix_memalign in_handler=1
+[ 398/720] trial 16 tbbmalloc        t=2 aligned  crash        2022 ms  SIGSEGV
+[ 399/720] trial 16 tbbmalloc        t=4 aligned  crash        3040 ms  SIGSEGV
+[ 400/720] trial 16 scudo            t=4 aligned  stall         969 ms  main:malloc handler:posix_memalign in_handler=1
+[ 401/720] trial 16 scudo            t=1 aligned  survived     5021 ms  
+[ 402/720] trial 16 scudo            t=2 aligned  survived     5023 ms  
+[ 403/720] trial 16 snmalloc         t=2 aligned  crash        1416 ms  SIGSEGV
+[ 404/720] trial 16 hardened_malloc  t=1 aligned  stall          29 ms  main:malloc handler:posix_memalign in_handler=1
+[ 405/720] trial 16 snmalloc         t=4 aligned  corruption   2068 ms  content
+[ 406/720] trial 16 hardened_malloc  t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 407/720] trial 16 snmalloc         t=1 aligned  crash        5839 ms  SIGSEGV
+[ 408/720] trial 17 jemalloc         t=4 aligned  crash        1112 ms  SIGSEGV
+[ 409/720] trial 16 hardened_malloc  t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 410/720] trial 17 jemalloc         t=1 aligned  stall          28 ms  main:calloc handler:free in_handler=1
+[ 411/720] trial 17 jemalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 412/720] trial 17 mimalloc         t=4 aligned  crash        1355 ms  SIGSEGV
+[ 413/720] trial 17 tcmalloc         t=1 aligned  crash        2020 ms  SIGSEGV
+[ 414/720] trial 17 mimalloc         t=2 aligned  crash        3421 ms  SIGSEGV
+[ 415/720] trial 17 tcmalloc         t=2 aligned  crash        3036 ms  SIGSEGV
+[ 416/720] trial 17 tcmalloc         t=4 aligned  stall          27 ms  main:none handler:posix_memalign in_handler=1
+[ 417/720] trial 17 mimalloc         t=1 aligned  survived     5022 ms  
+[ 418/720] trial 17 tbbmalloc        t=1 aligned  stall          88 ms  main:free handler:posix_memalign in_handler=1
+[ 419/720] trial 17 tbbmalloc        t=4 aligned  crash        1162 ms  SIGSEGV
+[ 420/720] trial 17 tbbmalloc        t=2 aligned  stall          27 ms  main:none handler:posix_memalign in_handler=1
+[ 421/720] trial 17 snmalloc         t=1 aligned  corruption   1885 ms  content
+[ 422/720] trial 17 scudo            t=2 aligned  stall        1794 ms  main:none handler:posix_memalign in_handler=1
+[ 423/720] trial 17 snmalloc         t=2 aligned  crash        1221 ms  SIGSEGV
+[ 424/720] trial 17 scudo            t=1 aligned  survived     5036 ms  
+[ 425/720] trial 17 scudo            t=4 aligned  survived     5039 ms  
+[ 426/720] trial 17 snmalloc         t=4 aligned  crash        1563 ms  SIGSEGV
+[ 427/720] trial 17 hardened_malloc  t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 428/720] trial 17 hardened_malloc  t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 429/720] trial 17 hardened_malloc  t=4 aligned  stall          47 ms  main:malloc handler:posix_memalign in_handler=1
+[ 430/720] trial 17 glibc            t=1 aligned  stall          26 ms  main:calloc handler:posix_memalign in_handler=1
+[ 431/720] trial 17 glibc            t=2 aligned  stall          28 ms  main:realloc handler:posix_memalign in_handler=1
+[ 432/720] trial 17 glibc            t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 433/720] trial 18 mimalloc         t=2 aligned  crash        1357 ms  SIGSEGV
+[ 434/720] trial 18 tcmalloc         t=1 aligned  stall          89 ms  main:malloc handler:posix_memalign in_handler=1
+[ 435/720] trial 18 mimalloc         t=1 aligned  crash        3585 ms  SIGSEGV
+[ 436/720] trial 18 tcmalloc         t=2 aligned  stall          29 ms  main:malloc handler:posix_memalign in_handler=1
+[ 437/720] trial 18 mimalloc         t=4 aligned  crash        3683 ms  SIGSEGV
+[ 438/720] trial 18 tcmalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 439/720] trial 18 tbbmalloc        t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 440/720] trial 18 tbbmalloc        t=2 aligned  crash        3047 ms  SIGSEGV
+[ 441/720] trial 18 tbbmalloc        t=4 aligned  crash        3066 ms  SIGSEGV
+[ 442/720] trial 18 scudo            t=1 aligned  stall         471 ms  main:malloc handler:posix_memalign in_handler=1
+[ 443/720] trial 18 snmalloc         t=2 aligned  crash        1795 ms  SIGSEGV
+[ 444/720] trial 18 scudo            t=2 aligned  survived     5039 ms  
+[ 445/720] trial 18 snmalloc         t=4 aligned  crash        2050 ms  SIGSEGV
+[ 446/720] trial 18 scudo            t=4 aligned  stall        3260 ms  main:realloc handler:posix_memalign in_handler=1
+[ 447/720] trial 18 snmalloc         t=1 aligned  survived     5040 ms  
+[ 448/720] trial 18 hardened_malloc  t=1 aligned  stall          88 ms  main:calloc handler:posix_memalign in_handler=1
+[ 449/720] trial 18 hardened_malloc  t=2 aligned  stall          48 ms  main:free handler:posix_memalign in_handler=1
+[ 450/720] trial 18 hardened_malloc  t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 451/720] trial 18 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 452/720] trial 18 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 453/720] trial 18 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 454/720] trial 18 jemalloc         t=1 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 455/720] trial 18 jemalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 456/720] trial 18 jemalloc         t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 457/720] trial 19 tcmalloc         t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 458/720] trial 19 tbbmalloc        t=1 aligned  crash        1081 ms  SIGSEGV
+[ 459/720] trial 19 tcmalloc         t=2 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 460/720] trial 19 tcmalloc         t=4 aligned  stall          28 ms  main:none handler:posix_memalign in_handler=1
+[ 461/720] trial 19 tbbmalloc        t=4 aligned  crash        1137 ms  SIGSEGV
+[ 462/720] trial 19 scudo            t=2 aligned  corruption    923 ms  content
+[ 463/720] trial 19 tbbmalloc        t=2 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 464/720] trial 19 scudo            t=1 aligned  survived     5037 ms  
+[ 465/720] trial 19 scudo            t=4 aligned  survived     5037 ms  
+[ 466/720] trial 19 snmalloc         t=4 aligned  crash        1236 ms  SIGSEGV
+[ 467/720] trial 19 snmalloc         t=1 aligned  survived     5021 ms  
+[ 468/720] trial 19 snmalloc         t=2 aligned  crash        5898 ms  SIGSEGV
+[ 469/720] trial 19 hardened_malloc  t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 470/720] trial 19 hardened_malloc  t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 471/720] trial 19 hardened_malloc  t=4 aligned  stall          88 ms  main:free handler:posix_memalign in_handler=1
+[ 472/720] trial 19 glibc            t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 473/720] trial 19 glibc            t=2 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 474/720] trial 19 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 475/720] trial 19 jemalloc         t=1 aligned  stall          29 ms  main:free handler:posix_memalign in_handler=1
+[ 476/720] trial 19 jemalloc         t=4 aligned  crash        1117 ms  SIGSEGV
+[ 477/720] trial 19 jemalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 478/720] trial 19 mimalloc         t=1 aligned  crash        1948 ms  SIGSEGV
+[ 479/720] trial 20 tbbmalloc        t=1 aligned  crash        1430 ms  SIGSEGV
+[ 480/720] trial 20 tbbmalloc        t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 481/720] trial 19 mimalloc         t=2 aligned  crash        3421 ms  SIGSEGV
+[ 482/720] trial 19 mimalloc         t=4 aligned  crash        4100 ms  SIGSEGV
+[ 483/720] trial 20 tbbmalloc        t=4 aligned  crash        3073 ms  SIGSEGV
+[ 484/720] trial 20 snmalloc         t=1 aligned  corruption   2908 ms  content
+[ 485/720] trial 20 scudo            t=1 aligned  survived     5020 ms  
+[ 486/720] trial 20 scudo            t=2 aligned  survived     5039 ms  
+[ 487/720] trial 20 scudo            t=4 aligned  survived     5020 ms  
+[ 488/720] trial 20 snmalloc         t=4 aligned  crash        1125 ms  SIGSEGV
+[ 489/720] trial 20 hardened_malloc  t=1 aligned  stall          28 ms  main:free handler:posix_memalign in_handler=1
+[ 490/720] trial 20 snmalloc         t=2 aligned  crash        2193 ms  SIGSEGV
+[ 491/720] trial 20 hardened_malloc  t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 492/720] trial 20 hardened_malloc  t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 493/720] trial 20 glibc            t=1 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 494/720] trial 20 glibc            t=2 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 495/720] trial 20 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 496/720] trial 20 jemalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 497/720] trial 20 jemalloc         t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 498/720] trial 20 jemalloc         t=4 aligned  stall          29 ms  main:malloc handler:posix_memalign in_handler=1
+[ 499/720] trial 20 mimalloc         t=2 aligned  crash        1903 ms  SIGSEGV
+[ 500/720] trial 20 mimalloc         t=4 aligned  crash        1992 ms  SIGSEGV
+[ 501/720] trial 20 tcmalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 502/720] trial 20 tcmalloc         t=2 aligned  stall          29 ms  main:none handler:posix_memalign in_handler=1
+[ 503/720] trial 20 mimalloc         t=1 aligned  survived     5021 ms  
+[ 504/720] trial 20 tcmalloc         t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 505/720] trial 21 scudo            t=1 aligned  survived     5038 ms  
+[ 506/720] trial 21 snmalloc         t=2 aligned  corruption     80 ms  content
+[ 507/720] trial 21 scudo            t=2 aligned  stall        2536 ms  main:malloc handler:posix_memalign in_handler=1
+[ 508/720] trial 21 snmalloc         t=4 aligned  crash        1335 ms  SIGSEGV
+[ 509/720] trial 21 scudo            t=4 aligned  survived     5036 ms  
+[ 510/720] trial 21 snmalloc         t=1 aligned  crash        5576 ms  SIGSEGV
+[ 511/720] trial 21 hardened_malloc  t=1 aligned  stall          47 ms  main:malloc handler:posix_memalign in_handler=1
+[ 512/720] trial 21 hardened_malloc  t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 513/720] trial 21 hardened_malloc  t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 514/720] trial 21 glibc            t=1 aligned  stall          27 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 515/720] trial 21 glibc            t=2 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 516/720] trial 21 glibc            t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 517/720] trial 21 jemalloc         t=2 aligned  crash        1094 ms  SIGSEGV
+[ 518/720] trial 21 jemalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 519/720] trial 21 jemalloc         t=4 aligned  stall          26 ms  main:realloc handler:posix_memalign in_handler=1
+[ 520/720] trial 21 mimalloc         t=2 aligned  crash        1703 ms  SIGSEGV
+[ 521/720] trial 21 mimalloc         t=4 aligned  crash        2304 ms  SIGSEGV
+[ 522/720] trial 21 tcmalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 523/720] trial 21 tcmalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 524/720] trial 21 mimalloc         t=1 aligned  crash        4112 ms  SIGSEGV
+[ 525/720] trial 21 tcmalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 526/720] trial 21 tbbmalloc        t=1 aligned  crash        2075 ms  SIGSEGV
+[ 527/720] trial 21 tbbmalloc        t=2 aligned  crash        2335 ms  SIGSEGV
+[ 528/720] trial 21 tbbmalloc        t=4 aligned  crash        3056 ms  SIGSEGV
+[ 529/720] trial 22 snmalloc         t=2 aligned  crash        3052 ms  SIGSEGV
+[ 530/720] trial 22 snmalloc         t=4 aligned  crash        3052 ms  SIGSEGV
+[ 531/720] trial 22 hardened_malloc  t=1 aligned  stall          25 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 532/720] trial 22 snmalloc         t=1 aligned  crash        5377 ms  SIGSEGV
+[ 533/720] trial 22 hardened_malloc  t=2 aligned  stall          48 ms  main:malloc handler:posix_memalign in_handler=1
+[ 534/720] trial 22 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 535/720] trial 22 hardened_malloc  t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 536/720] trial 22 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 537/720] trial 22 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 538/720] trial 22 jemalloc         t=2 aligned  crash        1102 ms  SIGSEGV
+[ 539/720] trial 22 jemalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 540/720] trial 22 mimalloc         t=2 aligned  crash        1426 ms  SIGSEGV
+[ 541/720] trial 22 jemalloc         t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 542/720] trial 22 mimalloc         t=1 aligned  crash        2525 ms  SIGSEGV
+[ 543/720] trial 22 tcmalloc         t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 544/720] trial 22 mimalloc         t=4 aligned  crash        2553 ms  SIGSEGV
+[ 545/720] trial 22 tcmalloc         t=2 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 546/720] trial 22 tcmalloc         t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 547/720] trial 22 tbbmalloc        t=1 aligned  crash        1140 ms  SIGSEGV
+[ 548/720] trial 22 tbbmalloc        t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 549/720] trial 22 tbbmalloc        t=4 aligned  crash        1682 ms  SIGSEGV
+[ 550/720] trial 22 scudo            t=4 aligned  corruption   1767 ms  content
+[ 551/720] trial 23 hardened_malloc  t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 552/720] trial 22 scudo            t=2 aligned  stall        1693 ms  main:none handler:posix_memalign in_handler=1
+[ 553/720] trial 23 hardened_malloc  t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 554/720] trial 22 scudo            t=1 aligned  survived     5039 ms  
+[ 555/720] trial 23 hardened_malloc  t=4 aligned  stall          48 ms  main:malloc handler:posix_memalign in_handler=1
+[ 556/720] trial 23 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 557/720] trial 23 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 558/720] trial 23 glibc            t=4 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 559/720] trial 23 jemalloc         t=1 aligned  stall          28 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 560/720] trial 23 jemalloc         t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 561/720] trial 23 mimalloc         t=1 aligned  crash        1742 ms  SIGSEGV
+[ 562/720] trial 23 jemalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 563/720] trial 23 mimalloc         t=2 aligned  crash        2720 ms  SIGSEGV
+[ 564/720] trial 23 tcmalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 565/720] trial 23 tcmalloc         t=2 aligned  stall          26 ms  main:realloc handler:free in_handler=1
+[ 566/720] trial 23 mimalloc         t=4 aligned  crash        3458 ms  SIGSEGV
+[ 567/720] trial 23 tcmalloc         t=4 aligned  stall          27 ms  main:none handler:posix_memalign in_handler=1
+[ 568/720] trial 23 tbbmalloc        t=1 aligned  crash        1503 ms  SIGSEGV
+[ 569/720] trial 23 tbbmalloc        t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 570/720] trial 23 tbbmalloc        t=4 aligned  crash        2054 ms  SIGSEGV
+[ 571/720] trial 23 snmalloc         t=1 aligned  crash        1679 ms  SIGSEGV
+[ 572/720] trial 23 snmalloc         t=2 aligned  crash        1225 ms  SIGSEGV
+[ 573/720] trial 23 scudo            t=1 aligned  survived     5037 ms  
+[ 574/720] trial 23 scudo            t=2 aligned  survived     5020 ms  
+[ 575/720] trial 23 snmalloc         t=4 aligned  crash        1175 ms  SIGSEGV
+[ 576/720] trial 23 scudo            t=4 aligned  stall        2715 ms  main:malloc handler:posix_memalign in_handler=1
+[ 577/720] trial 24 glibc            t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 578/720] trial 24 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 579/720] trial 24 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 580/720] trial 24 jemalloc         t=1 aligned  stall          48 ms  main:realloc handler:posix_memalign in_handler=1
+[ 581/720] trial 24 jemalloc         t=4 aligned  crash        1105 ms  SIGSEGV
+[ 582/720] trial 24 jemalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 583/720] trial 24 mimalloc         t=1 aligned  crash        2269 ms  SIGSEGV
+[ 584/720] trial 24 mimalloc         t=2 aligned  crash        3093 ms  SIGSEGV
+[ 585/720] trial 24 tcmalloc         t=1 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 586/720] trial 24 tcmalloc         t=2 aligned  stall          28 ms  main:realloc handler:posix_memalign in_handler=1
+[ 587/720] trial 24 mimalloc         t=4 aligned  crash        3385 ms  SIGSEGV
+[ 588/720] trial 24 tcmalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 589/720] trial 24 tbbmalloc        t=1 aligned  crash        1707 ms  SIGSEGV
+[ 590/720] trial 24 tbbmalloc        t=2 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 591/720] trial 24 tbbmalloc        t=4 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 592/720] trial 24 scudo            t=1 aligned  survived     5034 ms  
+[ 593/720] trial 24 scudo            t=2 aligned  survived     5036 ms  
+[ 594/720] trial 24 snmalloc         t=1 aligned  survived     5038 ms  
+[ 595/720] trial 24 snmalloc         t=4 aligned  crash        1137 ms  SIGSEGV
+[ 596/720] trial 24 snmalloc         t=2 aligned  crash        2186 ms  SIGSEGV
+[ 597/720] trial 24 scudo            t=4 aligned  stall        4305 ms  main:none handler:posix_memalign in_handler=1
+[ 598/720] trial 24 hardened_malloc  t=2 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 599/720] trial 24 hardened_malloc  t=1 aligned  stall         128 ms  main:free handler:posix_memalign in_handler=1
+[ 600/720] trial 24 hardened_malloc  t=4 aligned  stall          68 ms  main:realloc handler:posix_memalign in_handler=1
+[ 601/720] trial 25 jemalloc         t=1 aligned  stall          26 ms  main:malloc handler:free in_handler=1
+[ 602/720] trial 25 jemalloc         t=2 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 603/720] trial 25 jemalloc         t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 604/720] trial 25 mimalloc         t=2 aligned  crash        1358 ms  SIGSEGV
+[ 605/720] trial 25 mimalloc         t=4 aligned  crash        1431 ms  SIGSEGV
+[ 606/720] trial 25 tcmalloc         t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 607/720] trial 25 tcmalloc         t=2 aligned  stall         108 ms  main:free handler:free in_handler=1
+[ 608/720] trial 25 tbbmalloc        t=1 aligned  crash        1154 ms  SIGSEGV
+[ 609/720] trial 25 tcmalloc         t=4 aligned  stall          29 ms  main:none handler:posix_memalign in_handler=1
+[ 610/720] trial 25 tbbmalloc        t=2 aligned  crash        1703 ms  SIGSEGV
+[ 611/720] trial 25 scudo            t=2 aligned  corruption    562 ms  content
+[ 612/720] trial 25 tbbmalloc        t=4 aligned  crash        2042 ms  SIGSEGV
+[ 613/720] trial 25 snmalloc         t=1 aligned  corruption     60 ms  content
+[ 614/720] trial 25 mimalloc         t=1 aligned  crash        7244 ms  SIGSEGV
+[ 615/720] trial 25 scudo            t=1 aligned  stall        1052 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 616/720] trial 25 snmalloc         t=2 aligned  crash        2010 ms  SIGSEGV
+[ 617/720] trial 25 hardened_malloc  t=1 aligned  stall          25 ms  main:malloc handler:posix_memalign in_handler=1
+[ 618/720] trial 25 snmalloc         t=4 aligned  stall         991 ms  main:calloc handler:posix_memalign in_handler=1
+[ 619/720] trial 25 hardened_malloc  t=2 aligned  stall          46 ms  main:free handler:posix_memalign in_handler=1
+[ 620/720] trial 25 scudo            t=4 aligned  survived     5037 ms  
+[ 621/720] trial 25 hardened_malloc  t=4 aligned  stall          66 ms  main:free handler:posix_memalign in_handler=1
+[ 622/720] trial 25 glibc            t=1 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 623/720] trial 25 glibc            t=2 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 624/720] trial 25 glibc            t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 625/720] trial 26 mimalloc         t=2 aligned  crash        1434 ms  SIGSEGV
+[ 626/720] trial 26 mimalloc         t=1 aligned  crash        3143 ms  SIGSEGV
+[ 627/720] trial 26 tcmalloc         t=1 aligned  stall          28 ms  main:free handler:free in_handler=1
+[ 628/720] trial 26 tcmalloc         t=2 aligned  stall          28 ms  main:none handler:posix_memalign in_handler=1
+[ 629/720] trial 26 mimalloc         t=4 aligned  crash        3394 ms  SIGSEGV
+[ 630/720] trial 26 tbbmalloc        t=1 aligned  crash        1901 ms  SIGSEGV
+[ 631/720] trial 26 tcmalloc         t=4 aligned  stall          28 ms  main:none handler:posix_memalign in_handler=1
+[ 632/720] trial 26 tbbmalloc        t=2 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 633/720] trial 26 tbbmalloc        t=4 aligned  crash        2024 ms  SIGSEGV
+[ 634/720] trial 26 scudo            t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 635/720] trial 26 snmalloc         t=2 aligned  corruption    501 ms  content
+[ 636/720] trial 26 snmalloc         t=4 aligned  stall          32 ms  main:malloc handler:posix_memalign in_handler=1
+[ 637/720] trial 26 scudo            t=1 aligned  survived     5023 ms  
+[ 638/720] trial 26 snmalloc         t=1 aligned  crash        4997 ms  SIGSEGV
+[ 639/720] trial 26 scudo            t=4 aligned  survived     5038 ms  
+[ 640/720] trial 26 hardened_malloc  t=1 aligned  stall          66 ms  main:free handler:posix_memalign in_handler=1
+[ 641/720] trial 26 hardened_malloc  t=2 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 642/720] trial 26 hardened_malloc  t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 643/720] trial 26 glibc            t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 644/720] trial 26 glibc            t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 645/720] trial 26 glibc            t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 646/720] trial 26 jemalloc         t=4 aligned  crash        1118 ms  SIGSEGV
+[ 647/720] trial 26 jemalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 648/720] trial 26 jemalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 649/720] trial 27 tcmalloc         t=1 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 650/720] trial 27 tcmalloc         t=2 aligned  stall          27 ms  main:none handler:posix_memalign in_handler=1
+[ 651/720] trial 27 tcmalloc         t=4 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 652/720] trial 27 tbbmalloc        t=1 aligned  stall          28 ms  main:calloc handler:posix_memalign in_handler=1
+[ 653/720] trial 27 tbbmalloc        t=2 aligned  crash        1168 ms  SIGSEGV
+[ 654/720] trial 27 tbbmalloc        t=4 aligned  stall          21 ms  main:malloc handler:posix_memalign in_handler=1
+[ 655/720] trial 27 scudo            t=4 aligned  stall        2428 ms  main:malloc handler:posix_memalign in_handler=1
+[ 656/720] trial 27 scudo            t=2 aligned  survived     5030 ms  
+[ 657/720] trial 27 scudo            t=1 aligned  stall        3656 ms  main:realloc handler:posix_memalign in_handler=1
+[ 658/720] trial 27 snmalloc         t=1 aligned  survived     5036 ms  
+[ 659/720] trial 27 snmalloc         t=4 aligned  crash        2044 ms  SIGSEGV
+[ 660/720] trial 27 hardened_malloc  t=1 aligned  stall          68 ms  main:free handler:posix_memalign in_handler=1
+[ 661/720] trial 27 hardened_malloc  t=2 aligned  stall          29 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 662/720] trial 27 hardened_malloc  t=4 aligned  stall          26 ms  main:calloc handler:posix_memalign in_handler=1
+[ 663/720] trial 27 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 664/720] trial 27 snmalloc         t=2 aligned  crash        5979 ms  SIGSEGV
+[ 665/720] trial 27 glibc            t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 666/720] trial 27 glibc            t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 667/720] trial 27 jemalloc         t=1 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 668/720] trial 27 jemalloc         t=2 aligned  stall          28 ms  main:realloc handler:posix_memalign in_handler=1
+[ 669/720] trial 27 jemalloc         t=4 aligned  stall          29 ms  main:malloc handler:posix_memalign in_handler=1
+[ 670/720] trial 27 mimalloc         t=2 aligned  crash        1169 ms  SIGSEGV
+[ 671/720] trial 27 mimalloc         t=1 aligned  crash        2815 ms  SIGSEGV
+[ 672/720] trial 27 mimalloc         t=4 aligned  crash        2450 ms  SIGSEGV
+[ 673/720] trial 28 tbbmalloc        t=4 aligned  stall          27 ms  main:none handler:posix_memalign in_handler=1
+[ 674/720] trial 28 tbbmalloc        t=1 aligned  crash        3210 ms  SIGSEGV
+[ 675/720] trial 28 tbbmalloc        t=2 aligned  crash        4198 ms  SIGSEGV
+[ 676/720] trial 28 snmalloc         t=1 aligned  crash        1377 ms  SIGSEGV
+[ 677/720] trial 28 scudo            t=4 aligned  stall        1295 ms  main:malloc handler:posix_memalign in_handler=1
+[ 678/720] trial 28 snmalloc         t=2 aligned  crash        1437 ms  SIGSEGV
+[ 679/720] trial 28 scudo            t=1 aligned  survived     5038 ms  
+[ 680/720] trial 28 snmalloc         t=4 aligned  crash        1592 ms  SIGSEGV
+[ 681/720] trial 28 scudo            t=2 aligned  survived     5039 ms  
+[ 682/720] trial 28 hardened_malloc  t=1 aligned  stall          29 ms  main:calloc handler:posix_memalign in_handler=1
+[ 683/720] trial 28 hardened_malloc  t=2 aligned  stall          68 ms  main:realloc handler:posix_memalign in_handler=1
+[ 684/720] trial 28 hardened_malloc  t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 685/720] trial 28 glibc            t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 686/720] trial 28 glibc            t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 687/720] trial 28 glibc            t=4 aligned  stall           7 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 688/720] trial 28 jemalloc         t=2 aligned  crash        1095 ms  SIGSEGV
+[ 689/720] trial 28 jemalloc         t=1 aligned  stall          29 ms  main:posix_memalign handler:posix_memalign in_handler=1
+[ 690/720] trial 28 mimalloc         t=1 aligned  crash        1834 ms  SIGSEGV
+[ 691/720] trial 28 jemalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 692/720] trial 28 mimalloc         t=2 aligned  crash        2848 ms  SIGSEGV
+[ 693/720] trial 28 tcmalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 694/720] trial 28 mimalloc         t=4 aligned  crash        2993 ms  SIGSEGV
+[ 695/720] trial 28 tcmalloc         t=2 aligned  stall          28 ms  main:none handler:posix_memalign in_handler=1
+[ 696/720] trial 28 tcmalloc         t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 697/720] trial 29 snmalloc         t=1 aligned  corruption    722 ms  content
+[ 698/720] trial 29 scudo            t=2 aligned  corruption   1746 ms  content
+[ 699/720] trial 29 snmalloc         t=2 aligned  crash        1163 ms  SIGSEGV
+[ 700/720] trial 29 snmalloc         t=4 aligned  crash        2191 ms  SIGSEGV
+[ 701/720] trial 29 hardened_malloc  t=1 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 702/720] trial 29 scudo            t=1 aligned  survived     5031 ms  
+[ 703/720] trial 29 scudo            t=4 aligned  survived     5021 ms  
+[ 704/720] trial 29 hardened_malloc  t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 705/720] trial 29 hardened_malloc  t=4 aligned  stall          48 ms  main:none handler:posix_memalign in_handler=1
+[ 706/720] trial 29 glibc            t=1 aligned  stall          27 ms  main:calloc handler:posix_memalign in_handler=1
+[ 707/720] trial 29 glibc            t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 708/720] trial 29 glibc            t=4 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 709/720] trial 29 jemalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 710/720] trial 29 jemalloc         t=2 aligned  stall          26 ms  main:malloc handler:posix_memalign in_handler=1
+[ 711/720] trial 29 jemalloc         t=4 aligned  stall          28 ms  main:malloc handler:free in_handler=1
+[ 712/720] trial 29 mimalloc         t=4 aligned  corruption     60 ms  content
+[ 713/720] trial 29 mimalloc         t=1 aligned  crash        1361 ms  SIGSEGV
+[ 714/720] trial 29 tcmalloc         t=1 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 715/720] trial 29 tcmalloc         t=2 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 716/720] trial 29 tcmalloc         t=4 aligned  stall          28 ms  main:malloc handler:posix_memalign in_handler=1
+[ 717/720] trial 29 tbbmalloc        t=4 aligned  crash        1145 ms  SIGSEGV
+[ 718/720] trial 29 tbbmalloc        t=1 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 719/720] trial 29 tbbmalloc        t=2 aligned  stall          27 ms  main:malloc handler:posix_memalign in_handler=1
+[ 720/720] trial 29 mimalloc         t=2 aligned  crash        4555 ms  SIGSEGV
+results: bench/out/sigstorm-aligned-others/results.csv
+report:  bench/out/sigstorm-aligned-others/report.md
