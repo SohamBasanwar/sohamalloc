@@ -1,0 +1,90 @@
+2026-10-22T23:08:17Z matrix start: a811d6f-dirty on 7.0.0-38-generic
+2026-10-22T23:08:17Z build-release rc=0 
+2026-10-22T23:08:17Z build-debug rc=0 
+2026-10-22T23:08:18Z build-thread rc=0 
+2026-10-22T23:08:20Z build-address rc=0 
+2026-10-22T23:08:21Z build-undefined rc=0 
+2026-10-22T23:08:22Z build-aarch64 rc=0 
+2026-10-22T23:08:24Z build-armhf rc=0 
+2026-10-22T23:08:24Z build-musl rc=0 
+2026-10-22T23:08:25Z build-mingw rc=0 
+2026-10-22T23:09:21Z native rc=0 == 24 passed, 0 failed, 0 skipped, 0 informational in 54s
+2026-10-22T23:10:18Z debug rc=0 == 24 passed, 0 failed, 0 skipped, 0 informational in 55s
+2026-10-22T23:11:35Z tsan rc=0 == 9 passed, 0 failed, 0 skipped, 0 informational in 76s
+2026-10-22T23:11:50Z asan rc=0 == 9 passed, 0 failed, 0 skipped, 0 informational in 14s
+2026-10-22T23:12:01Z ubsan rc=0 == 9 passed, 0 failed, 0 skipped, 0 informational in 11s
+2026-10-22T23:12:12Z preload rc=0 == 9 passed, 0 failed, 0 skipped
+2026-10-22T23:13:02Z aarch64 rc=0 == 24 passed, 0 failed, 0 skipped, 0 informational in 48s
+2026-10-22T23:13:49Z armhf rc=0 == 24 passed, 0 failed, 0 skipped, 0 informational in 44s
+2026-10-22T23:14:25Z musl rc=0 == 23 passed, 0 failed, 1 skipped, 0 informational in 36s
+2026-10-22T23:14:31Z mingw rc=0 == 9 passed, 0 failed, 0 skipped, 0 informational in 5s
+2026-10-22T23:15:40Z sigstorm runs=66 failures=0
+2026-10-22T23:15:40Z matrix end
+
+# sigstorm per-commit check (debug build, 4 s each)
+rc=0 --handler=aligned --threads=1 --seed=1 :: outcome=survived handler=aligned threads=1 interval_us=20 seed=1 elapsed_ms=4033 signals=188779 handlers=185524 handler_inside=4079 handler_null=0 handle
+rc=0 --handler=aligned --threads=1 --seed=1 --workload=page :: outcome=survived handler=aligned threads=1 interval_us=20 seed=1 elapsed_ms=4028 signals=188114 handlers=186739 handler_inside=6897 handl
+rc=0 --handler=aligned --threads=1 --seed=2 :: outcome=survived handler=aligned threads=1 interval_us=20 seed=2 elapsed_ms=4034 signals=187437 handlers=184654 handler_inside=4252 handler_null=0 handle
+rc=0 --handler=aligned --threads=1 --seed=2 --workload=page :: outcome=survived handler=aligned threads=1 interval_us=20 seed=2 elapsed_ms=4027 signals=187430 handlers=184847 handler_inside=7184 handl
+rc=0 --handler=aligned --threads=2 --seed=1 :: outcome=survived handler=aligned threads=2 interval_us=20 seed=1 elapsed_ms=4030 signals=186356 handlers=182959 handler_inside=5192 handler_null=0 handle
+rc=0 --handler=aligned --threads=2 --seed=1 --workload=page :: outcome=survived handler=aligned threads=2 interval_us=20 seed=1 elapsed_ms=4023 signals=186800 handlers=186319 handler_inside=6491 handl
+rc=0 --handler=aligned --threads=2 --seed=2 :: outcome=survived handler=aligned threads=2 interval_us=20 seed=2 elapsed_ms=4031 signals=186012 handlers=181360 handler_inside=4656 handler_null=0 handle
+rc=0 --handler=aligned --threads=2 --seed=2 --workload=page :: outcome=survived handler=aligned threads=2 interval_us=20 seed=2 elapsed_ms=4027 signals=186306 handlers=185569 handler_inside=6286 handl
+rc=0 --handler=aligned --threads=4 --seed=1 :: outcome=survived handler=aligned threads=4 interval_us=20 seed=1 elapsed_ms=4020 signals=186484 handlers=182124 handler_inside=5119 handler_null=0 handle
+rc=0 --handler=aligned --threads=4 --seed=1 --workload=page :: outcome=survived handler=aligned threads=4 interval_us=20 seed=1 elapsed_ms=4020 signals=184456 handlers=184170 handler_inside=6539 handl
+rc=0 --handler=aligned --threads=4 --seed=2 :: outcome=survived handler=aligned threads=4 interval_us=20 seed=2 elapsed_ms=4024 signals=186368 handlers=180879 handler_inside=5229 handler_null=0 handle
+rc=0 --handler=aligned --threads=4 --seed=2 --workload=page :: outcome=survived handler=aligned threads=4 interval_us=20 seed=2 elapsed_ms=4035 signals=188792 handlers=188630 handler_inside=6391 handl
+rc=0 --handler=calloc --threads=1 --seed=1 :: outcome=survived handler=calloc threads=1 interval_us=20 seed=1 elapsed_ms=4022 signals=189846 handlers=185982 handler_inside=4292 handler_null=0 handler_
+rc=0 --handler=calloc --threads=1 --seed=2 :: outcome=survived handler=calloc threads=1 interval_us=20 seed=2 elapsed_ms=4021 signals=187368 handlers=183451 handler_inside=4295 handler_null=0 handler_
+rc=0 --handler=calloc --threads=2 --seed=1 :: outcome=survived handler=calloc threads=2 interval_us=20 seed=1 elapsed_ms=4021 signals=190070 handlers=186733 handler_inside=4175 handler_null=0 handler_
+rc=0 --handler=calloc --threads=2 --seed=2 :: outcome=survived handler=calloc threads=2 interval_us=20 seed=2 elapsed_ms=4020 signals=185374 handlers=181736 handler_inside=4125 handler_null=0 handler_
+rc=0 --handler=calloc --threads=4 --seed=1 :: outcome=survived handler=calloc threads=4 interval_us=20 seed=1 elapsed_ms=4021 signals=187848 handlers=184189 handler_inside=5029 handler_null=0 handler_
+rc=0 --handler=calloc --threads=4 --seed=2 :: outcome=survived handler=calloc threads=4 interval_us=20 seed=2 elapsed_ms=4036 signals=187340 handlers=183313 handler_inside=4854 handler_null=0 handler_
+rc=0 --handler=churn --threads=1 --seed=1 :: outcome=survived handler=churn threads=1 interval_us=20 seed=1 elapsed_ms=4039 signals=191513 handlers=185311 handler_inside=4538 handler_null=0 handler_ba
+rc=0 --handler=churn --threads=1 --seed=1 --workload=page :: outcome=survived handler=churn threads=1 interval_us=20 seed=1 elapsed_ms=4036 signals=190900 handlers=189628 handler_inside=7816 handler_n
+rc=0 --handler=churn --threads=1 --seed=2 :: outcome=survived handler=churn threads=1 interval_us=20 seed=2 elapsed_ms=4036 signals=188957 handlers=182663 handler_inside=4380 handler_null=0 handler_ba
+rc=0 --handler=churn --threads=1 --seed=2 --workload=page :: outcome=survived handler=churn threads=1 interval_us=20 seed=2 elapsed_ms=4021 signals=187920 handlers=186678 handler_inside=7923 handler_n
+rc=0 --handler=churn --threads=2 --seed=1 :: outcome=survived handler=churn threads=2 interval_us=20 seed=1 elapsed_ms=4038 signals=191222 handlers=187133 handler_inside=4259 handler_null=0 handler_ba
+rc=0 --handler=churn --threads=2 --seed=1 --workload=page :: outcome=survived handler=churn threads=2 interval_us=20 seed=1 elapsed_ms=4022 signals=189854 handlers=189419 handler_inside=6995 handler_n
+rc=0 --handler=churn --threads=2 --seed=2 :: outcome=survived handler=churn threads=2 interval_us=20 seed=2 elapsed_ms=4036 signals=188906 handlers=185695 handler_inside=4194 handler_null=0 handler_ba
+rc=0 --handler=churn --threads=2 --seed=2 --workload=page :: outcome=survived handler=churn threads=2 interval_us=20 seed=2 elapsed_ms=4022 signals=187858 handlers=187331 handler_inside=7060 handler_n
+rc=0 --handler=churn --threads=4 --seed=1 :: outcome=survived handler=churn threads=4 interval_us=20 seed=1 elapsed_ms=4035 signals=186744 handlers=184438 handler_inside=4712 handler_null=0 handler_ba
+rc=0 --handler=churn --threads=4 --seed=1 --workload=page :: outcome=survived handler=churn threads=4 interval_us=20 seed=1 elapsed_ms=4021 signals=189136 handlers=188658 handler_inside=7601 handler_n
+rc=0 --handler=churn --threads=4 --seed=2 :: outcome=survived handler=churn threads=4 interval_us=20 seed=2 elapsed_ms=4037 signals=186600 handlers=184525 handler_inside=4721 handler_null=0 handler_ba
+rc=0 --handler=churn --threads=4 --seed=2 --workload=page :: outcome=survived handler=churn threads=4 interval_us=20 seed=2 elapsed_ms=4040 signals=185476 handlers=184573 handler_inside=7107 handler_n
+rc=0 --handler=free --threads=1 --seed=1 :: outcome=survived handler=free threads=1 interval_us=20 seed=1 elapsed_ms=4039 signals=188136 handlers=184079 handler_inside=4140 handler_null=163519 handler
+rc=0 --handler=free --threads=1 --seed=2 :: outcome=survived handler=free threads=1 interval_us=20 seed=2 elapsed_ms=4036 signals=188362 handlers=184825 handler_inside=4169 handler_null=160099 handler
+rc=0 --handler=free --threads=2 --seed=1 :: outcome=survived handler=free threads=2 interval_us=20 seed=1 elapsed_ms=4038 signals=191026 handlers=187473 handler_inside=4233 handler_null=144736 handler
+rc=0 --handler=free --threads=2 --seed=2 :: outcome=survived handler=free threads=2 interval_us=20 seed=2 elapsed_ms=4037 signals=189556 handlers=185108 handler_inside=4381 handler_null=138966 handler
+rc=0 --handler=free --threads=4 --seed=1 :: outcome=survived handler=free threads=4 interval_us=20 seed=1 elapsed_ms=4033 signals=187392 handlers=183440 handler_inside=4813 handler_null=105621 handler
+rc=0 --handler=free --threads=4 --seed=2 :: outcome=survived handler=free threads=4 interval_us=20 seed=2 elapsed_ms=4037 signals=186776 handlers=182763 handler_inside=5045 handler_null=109304 handler
+rc=0 --handler=large --threads=1 --seed=1 :: outcome=survived handler=large threads=1 interval_us=20 seed=1 elapsed_ms=4037 signals=189747 handlers=185491 handler_inside=5245 handler_null=0 handler_ba
+rc=0 --handler=large --threads=1 --seed=2 :: outcome=survived handler=large threads=1 interval_us=20 seed=2 elapsed_ms=4021 signals=185668 handlers=180533 handler_inside=4769 handler_null=0 handler_ba
+rc=0 --handler=large --threads=2 --seed=1 :: outcome=survived handler=large threads=2 interval_us=20 seed=1 elapsed_ms=4035 signals=189206 handlers=184675 handler_inside=4960 handler_null=0 handler_ba
+rc=0 --handler=large --threads=2 --seed=2 :: outcome=survived handler=large threads=2 interval_us=20 seed=2 elapsed_ms=4035 signals=186560 handlers=183217 handler_inside=4740 handler_null=0 handler_ba
+rc=0 --handler=large --threads=4 --seed=1 :: outcome=survived handler=large threads=4 interval_us=20 seed=1 elapsed_ms=4037 signals=186596 handlers=180918 handler_inside=5244 handler_null=0 handler_ba
+rc=0 --handler=large --threads=4 --seed=2 :: outcome=survived handler=large threads=4 interval_us=20 seed=2 elapsed_ms=4033 signals=187800 handlers=181801 handler_inside=5393 handler_null=0 handler_ba
+rc=0 --handler=malloc --threads=1 --seed=1 :: outcome=survived handler=malloc threads=1 interval_us=20 seed=1 elapsed_ms=4021 signals=186472 handlers=183334 handler_inside=4187 handler_null=0 handler_
+rc=0 --handler=malloc --threads=1 --seed=1 --workload=page :: outcome=survived handler=malloc threads=1 interval_us=20 seed=1 elapsed_ms=4054 signals=189163 handlers=188663 handler_inside=8375 handler
+rc=0 --handler=malloc --threads=1 --seed=2 :: outcome=survived handler=malloc threads=1 interval_us=20 seed=2 elapsed_ms=4034 signals=188488 handlers=185728 handler_inside=4100 handler_null=0 handler_
+rc=0 --handler=malloc --threads=1 --seed=2 --workload=page :: outcome=survived handler=malloc threads=1 interval_us=20 seed=2 elapsed_ms=4041 signals=185891 handlers=185381 handler_inside=6909 handler
+rc=0 --handler=malloc --threads=2 --seed=1 :: outcome=survived handler=malloc threads=2 interval_us=20 seed=1 elapsed_ms=4022 signals=186690 handlers=183326 handler_inside=4551 handler_null=0 handler_
+rc=0 --handler=malloc --threads=2 --seed=1 --workload=page :: outcome=survived handler=malloc threads=2 interval_us=20 seed=1 elapsed_ms=4037 signals=186626 handlers=186056 handler_inside=7203 handler
+rc=0 --handler=malloc --threads=2 --seed=2 :: outcome=survived handler=malloc threads=2 interval_us=20 seed=2 elapsed_ms=4024 signals=186214 handlers=182190 handler_inside=4942 handler_null=0 handler_
+rc=0 --handler=malloc --threads=2 --seed=2 --workload=page :: outcome=survived handler=malloc threads=2 interval_us=20 seed=2 elapsed_ms=4021 signals=184734 handlers=183987 handler_inside=8146 handler
+rc=0 --handler=malloc --threads=4 --seed=1 :: outcome=survived handler=malloc threads=4 interval_us=20 seed=1 elapsed_ms=4025 signals=184536 handlers=180993 handler_inside=5513 handler_null=0 handler_
+rc=0 --handler=malloc --threads=4 --seed=1 --workload=page :: outcome=survived handler=malloc threads=4 interval_us=20 seed=1 elapsed_ms=4071 signals=182116 handlers=180595 handler_inside=7089 handler
+rc=0 --handler=malloc --threads=4 --seed=2 :: outcome=survived handler=malloc threads=4 interval_us=20 seed=2 elapsed_ms=4021 signals=185572 handlers=181896 handler_inside=4746 handler_null=0 handler_
+rc=0 --handler=malloc --threads=4 --seed=2 --workload=page :: outcome=survived handler=malloc threads=4 interval_us=20 seed=2 elapsed_ms=4025 signals=186444 handlers=185752 handler_inside=7090 handler
+rc=0 --handler=none --threads=1 --seed=1 :: outcome=survived handler=none threads=1 interval_us=20 seed=1 elapsed_ms=4030 signals=188136 handlers=185641 handler_inside=4073 handler_null=0 handler_bad=
+rc=0 --handler=none --threads=1 --seed=2 :: outcome=survived handler=none threads=1 interval_us=20 seed=2 elapsed_ms=4029 signals=190112 handlers=183645 handler_inside=4140 handler_null=0 handler_bad=
+rc=0 --handler=none --threads=2 --seed=1 :: outcome=survived handler=none threads=2 interval_us=20 seed=1 elapsed_ms=4031 signals=188266 handlers=185166 handler_inside=4234 handler_null=0 handler_bad=
+rc=0 --handler=none --threads=2 --seed=2 :: outcome=survived handler=none threads=2 interval_us=20 seed=2 elapsed_ms=4020 signals=190080 handlers=186894 handler_inside=4193 handler_null=0 handler_bad=
+rc=0 --handler=none --threads=4 --seed=1 :: outcome=survived handler=none threads=4 interval_us=20 seed=1 elapsed_ms=4033 signals=187116 handlers=183417 handler_inside=4924 handler_null=0 handler_bad=
+rc=0 --handler=none --threads=4 --seed=2 :: outcome=survived handler=none threads=4 interval_us=20 seed=2 elapsed_ms=4035 signals=187364 handlers=183621 handler_inside=4958 handler_null=0 handler_bad=
+rc=0 --handler=realloc --threads=1 --seed=1 :: outcome=survived handler=realloc threads=1 interval_us=20 seed=1 elapsed_ms=4037 signals=188167 handlers=185109 handler_inside=5141 handler_null=0 handle
+rc=0 --handler=realloc --threads=1 --seed=2 :: outcome=survived handler=realloc threads=1 interval_us=20 seed=2 elapsed_ms=4036 signals=189399 handlers=186512 handler_inside=4323 handler_null=0 handle
+rc=0 --handler=realloc --threads=2 --seed=1 :: outcome=survived handler=realloc threads=2 interval_us=20 seed=1 elapsed_ms=4034 signals=186086 handlers=182634 handler_inside=4591 handler_null=0 handle
+rc=0 --handler=realloc --threads=2 --seed=2 :: outcome=survived handler=realloc threads=2 interval_us=20 seed=2 elapsed_ms=4035 signals=186640 handlers=183487 handler_inside=5663 handler_null=0 handle
+rc=0 --handler=realloc --threads=4 --seed=1 :: outcome=survived handler=realloc threads=4 interval_us=20 seed=1 elapsed_ms=4033 signals=185764 handlers=181548 handler_inside=5041 handler_null=0 handle
+rc=0 --handler=realloc --threads=4 --seed=2 :: outcome=survived handler=realloc threads=4 interval_us=20 seed=2 elapsed_ms=4035 signals=184676 handlers=181230 handler_inside=5283 handler_null=0 handle

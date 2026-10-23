@@ -231,6 +231,7 @@ regress_fork_busy  regress/fork_concurrent_busy.c c 120 soham
 regress_sig_aligned regress/signal_aligned_enomem.c c 60 soham
 regress_shared_trim regress/signal_shared_release.c c 60 soham
 regress_bss_bounded regress/bss_bounded.c c 60 soham
+regress_large_fallback regress/signal_large_fallback.c c 60 soham
 "
 fi
 

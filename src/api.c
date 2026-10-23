@@ -412,16 +412,35 @@ static void *heap_alloc_aligned(heap_t *h, size_t align, size_t n, bool *zero) {
   return solo_alloc(n, align);
 }
 
+/* Handler-context requests above this size never use the static arena,
+ * which is never reused: one such block would take most of it. */
+#define HANDLER_ARENA_MAX ((size_t)16 * 1024)
+
+/* Handler context: a mapping of its own (a solo), with every lock taken by
+ * trylock.  trymode is saved, since a nested handler may already be in it. */
+static void *handler_solo(size_t n, size_t align) {
+  soham_tls_t *t = &t_tls;
+  uint8_t was = t->trymode;
+  t->trymode = 1;
+  signal_fence();
+  void *p = solo_alloc(n, align);
+  signal_fence();
+  t->trymode = was;
+  return p;
+}
+
 /* A signal handler interrupted the allocator on this thread: use the
  * shared heap if its lock is free, with every lock below it taken by
- * trylock only (no handler ever waits); otherwise the static arena.
- * align is 16, or a power of two above it (aligned allocation). */
+ * trylock only (no handler ever waits).  Otherwise a small request comes
+ * from the static arena, and a larger one (or a small one the arena cannot
+ * serve) from a mapping of its own.  align is 16, or a power of two above
+ * it (aligned allocation). */
 static SOHAM_NOINLINE void *handler_alloc(size_t n, size_t align, bool *zero) {
   soham_tls_t *t = &t_tls;
   void *p = NULL;
   *zero = false;
-  if (atomic_load_explicit(&g_init_state, memory_order_acquire) == 2 && !t->trymode &&
-      soham_trylock(&g_shared_lock)) {
+  bool ready = atomic_load_explicit(&g_init_state, memory_order_acquire) == 2;
+  if (ready && !t->trymode && soham_trylock(&g_shared_lock)) {
     t->trymode = 1;
     signal_fence();
     p = align <= 16 ? heap_alloc(g_shared, n, zero) : heap_alloc_aligned(g_shared, align, n, zero);
@@ -430,7 +449,11 @@ static SOHAM_NOINLINE void *handler_alloc(size_t n, size_t align, bool *zero) {
     t->trymode = 0;
     soham_unlock(&g_shared_lock);
   }
-  if (!p) { *zero = false; p = bss_alloc(n, align); }
+  if (!p) {
+    *zero = false;
+    if (n <= HANDLER_ARENA_MAX || !ready) p = bss_alloc(n, align);
+    if (!p && ready && (p = handler_solo(n, align)) != NULL) *zero = true;
+  }
   if (!p) errno = ENOMEM;
   return p;
 }

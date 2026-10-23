@@ -105,7 +105,8 @@ A remote freer cannot walk the owner's list. A cycle in the remote chain (a thre
 
   The lock is held only for list work, so a handler that finds it taken (and falls back to the static arena) is turned away briefly. `g_shared_trim` is set by every allocation from the shared heap and by every notification pushed to it. A trim clears it once no avail page and no notification is left. Full pages with less than 1/8 free, and the current page of each class, stay (as on any heap).
 - **Flush.** `soham_collect(1)` and `malloc_trim` flush the shared heap completely (`shared_flush`: `heap_flush` under the blocking lock, then the notify stack is reopened).
-- **Static arena.** 384 KiB in .bss, bump-allocated, lock-free. It serves allocations made during the allocator's own initialisation and handler-context requests when the shared heap is unavailable (its trylock, or a trylock below it, failed), with alignment up to 4096. Its blocks are never reused: their frees are counted no-ops. The bump counter only moves when a block fits (a CAS loop); before 2026-10-21 it also advanced on failed requests and wrapped on 32-bit targets (defect R3-3).
+- **Static arena.** 384 KiB in .bss, bump-allocated, lock-free. It serves allocations made during the allocator's own initialisation, and handler-context requests of at most 16 KiB (`HANDLER_ARENA_MAX`) when the shared heap is unavailable (its trylock, or a trylock below it, failed), with alignment up to 4096. Its blocks are never reused: their frees are counted no-ops. The bump counter only moves when a block fits (a CAS loop); before 2026-10-21 it also advanced on failed requests and wrapped on 32-bit targets (defect R3-3).
+- **Handler mappings.** A handler-context request that neither the shared heap nor the static arena can serve, which includes every request above 16 KiB, gets a mapping of its own: a solo, whose table lock is taken by trylock (`handler_solo`, which runs `solo_alloc` in trymode). Before 2026-10-22, large requests also went to the static arena: the first one used most of it, and every later large fallback returned NULL (C1-1 in the defect ledger).
 
 ## 5. Lock-free protocols
 
@@ -265,7 +266,11 @@ A handler therefore never waits for a lock that its own interrupted thread holds
 
 **Limits:**
 
-1. **Allocation in a handler can fail with ENOMEM while memory is available.** This happens when the shared heap's lock, or a lock below it (page heap, class pool, solo table), is held at that moment, by another thread, a nested handler, a trim or a `fork` in progress, *and* the static arena cannot serve the request. The arena holds 384 KiB in all, is never reused, and serves alignments up to 4096 only. A handler must check for NULL, as with any allocator.
+1. **Allocation in a handler can fail with ENOMEM while memory is available.** First, the shared heap must be unable to serve the request: its lock, or a lock below it (page heap, class pool), is held at that moment, by another thread, a nested handler, a trim or a `fork` in progress. Second, both fallbacks must fail:
+   - the static arena serves only requests up to 16 KiB with alignment up to 4096, holds 384 KiB in all, and is never reused;
+   - a mapping of its own needs the solo table's lock, taken by trylock, and a successful `mmap`.
+
+   A handler must check for NULL, as with any allocator.
 2. **Deferred frees.** Frees of runs and solos (192 KiB and above) made in a handler that interrupted the allocator are deferred to the thread's next allocator call, or its exit. The memory is not reusable until then.
 3. **Large blocks in handler context:**
    - `realloc` of a solo (32 MiB and above) returns NULL with ENOMEM when the solo table's lock is held;

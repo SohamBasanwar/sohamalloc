@@ -1,0 +1,39 @@
+# regress/signal_large_fallback, unfixed (fd735dd) against fixed (working tree with the handler-solo fallback), 2026-10-22T23:06:50Z
+# unfixed: frozen fd735dd release build, sha256 77ab3a6b1f1c62ba; fixed: build/ and build-debug/ of the working tree
+# test built like tests/run_tests.sh (-O2 -fno-builtin-malloc ...); host 7.0.0-38-generic, load 1.42 0.90 0.88
+## OLD run 1
+41456 handler calls, 18900 NULL
+FAIL
+exit=1
+## OLD run 2
+41740 handler calls, 19069 NULL
+FAIL
+exit=1
+## OLD run 3
+41473 handler calls, 18796 NULL
+FAIL
+exit=1
+## NEW-release run 1
+41365 handler calls, 0 NULL
+PASS
+exit=0
+## NEW-release run 2
+41173 handler calls, 0 NULL
+PASS
+exit=0
+## NEW-release run 3
+39654 handler calls, 0 NULL
+PASS
+exit=0
+## NEW-debug run 1
+40535 handler calls, 0 NULL
+PASS
+exit=0
+## NEW-debug run 2
+41037 handler calls, 0 NULL
+PASS
+exit=0
+## NEW-debug run 3
+40689 handler calls, 0 NULL
+PASS
+exit=0

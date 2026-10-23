@@ -103,3 +103,16 @@ The tests were built as `tests/run_tests.sh` builds them. The unfixed code is `c
 The reviewers' reproducer crashed 3/3 under load and 0/3 on the idle machine. The final test starts both forks by spinning, with the heapless thread first. Built as the runner builds it, it fails 3/3 (5/5 in an earlier check).
 
 **Coverage gap.** `tools/sigstorm` has no handler kind that makes aligned allocations, so no sigstorm campaign could have found R3-2. An `aligned` handler kind is to be added before the next campaign.
+
+## Found by measurement (2026-10-22)
+
+| ID | Severity | Found | How found | Symptom | Root cause | Fix | Regression test |
+|---|---|---|---|---|---|---|---|
+| C1-1 | major (within a documented limit) | 2026-10-21 21:5x | sigstorm campaign 1, handler-results table (`data/sigstorm-campaign1/report.md`), confirmed on `fd735dd` | Large allocations (300 KB) from a signal handler that interrupted the allocator return NULL. In the campaign this happened in 2–3% of the `large` handler calls that interrupted an allocator call; in the targeted test, about 45% (the main thread holds the page-heap lock most of the time) | A run of 300 KB needs the page-heap lock, which the interrupted thread may hold. The only fallback was the static arena (384 KiB, never reused): the first large fallback used most of it, and every later one failed. This was within limit 1 of IMPLEMENTATION_NOTES §10, so not a guarantee violation, but it limited practicality | Requests above 16 KiB never use the static arena. A request that neither the shared heap nor the arena can serve gets a mapping of its own, a solo whose table is taken by trylock (`handler_solo`). The arena stays for small requests | `tests/regress/signal_large_fallback.c` |
+
+**Before/after** (`data/regress-before-after/2026-10-22-large-fallback-before-after.txt`; prototype measurements in `data/proto-handler-fallback/`):
+
+| Test | `fd735dd` | Fixed |
+|---|---|---|
+| `signal_large_fallback`, 3 runs | FAIL 3/3: 18,796–19,069 NULL of 41,456–41,740 handler calls | PASS 3/3 release and 3/3 debug: 0 NULL |
+| sigstorm `--handler=large`, 5 s, 1/2/4 threads | 95 / 143 / 115 NULL | 0 / 0 / 0 |
