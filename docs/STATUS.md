@@ -1,10 +1,10 @@
 # sohamalloc: project status
 
-Last updated: 2026-10-22 17:55 UTC, branch `sohamalloc-dev`.
+Last updated: 2026-10-22 23:25 UTC, branch `sohamalloc-dev`.
 
 ## Where things stand
 
-**Benchmarks** (24 workloads against glibc 2.39, jemalloc, mimalloc and tcmalloc; old 4-vCPU cloud VM, 3 repetitions; report `bench/out/report.md`):
+**Benchmarks** (24 workloads against glibc 2.39, jemalloc, mimalloc and tcmalloc; old 4-vCPU cloud VM, 3 repetitions; the raw data and `bench/out/report.md` of that campaign are not on this machine, see `docs/research-log/01-timeline.md` §5):
 
 | allocator | time geomean | RSS geomean | combined score (lower is better) |
 |---|---:|---:|---:|
@@ -47,48 +47,40 @@ Round 3 fixes:
 
 The limits of the signal-safety guarantee are documented in `docs/IMPLEMENTATION_NOTES.md` §10 and in the README.
 
-## Stopped at the author's request (2026-10-22 ~17:50 UTC)
+## Running now (2026-10-22 23:2x UTC)
 
-Nothing is running. Everything is saved in git.
+**Review round 4 (gate 2)** of `ae95875`, as workflow run `wf_75415e22-635`. `ae95875` holds the round-3 fixes (`fd735dd`) plus the handler mapping fallback (C1-1).
 
-**Review round 4 (gate 2) has not been done.** Two attempts on `fd735dd` produced no findings:
+- **Design.** Five lenses at reasoning effort "high". One combined refuter per finding, plus a second for anything claimed or judged critical or major, and a tie-breaker on a split. The completeness critic and up to three gap reviewers run only when nothing blocking is confirmed.
+- **Frozen libraries:** `<session scratchpad>/review4/libs/`, with a copy in `bench/out/review4-libs-ae95875/`. sha256 prefixes: release `96810dba`, debug `6dd2195d`, armhf `cae9f398`, aarch64 `583d7bea`.
+- **Journal and transcripts:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/subagents/workflows/wf_75415e22-635/`.
+- **If interrupted:**
+  - **Same session:** `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round4c.js", resumeFromRunId: "wf_75415e22-635"})`.
+  - **New session:** relaunch that script, which is self-contained, after copying `bench/out/review4-libs-ae95875/*` into the scratchpad's `review4/libs/`. Salvage any finished findings from `journal.jsonl` into `docs/research-log/data/review4/` (raw notes, git-excluded).
 
-- `wf_a26b2874-42a` (2026-10-21) failed at the usage limit;
-- `wf_f93f99a2-398` (2026-10-22) was stopped at the author's request before any reviewer finished (its journal has no results).
+**Done since the last checkpoint:**
 
-**To run it:**
-
-- **Same session:** resume with `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round4b-wf_f93f99a2-398.js", resumeFromRunId: "wf_f93f99a2-398"})`.
-- **New session:** relaunch that script, which is self-contained.
-
-It expects frozen `fd735dd` libraries in `<session scratchpad>/review4/libs/`. Copy them from `build/`, `build-debug/`, `build-thread/`, `build-armhf/` and `build-aarch64/`, rebuilt from `fd735dd` if needed, and check the sha256 prefixes: release `77ab3a6b`, debug `60def547`, armhf `f052de62`, aarch64 `a0e72684`.
-
-**sigstorm campaign 1 is finished and archived** (`docs/research-log/data/sigstorm-campaign1/`).
-
-- sohamalloc, as the frozen `c1a9791` build: 0 failures in 540 signal trials, 95% CI [0, 0.007].
-- Every other allocator failed in 50–100% of its signal trials.
-- The 1620 control trials all survived.
-
-**sohamalloc rerun on `fd735dd`: stopped at 456 of 810 trials, all survived.**
-
-- Interim data and the resume command: `docs/research-log/data/sigstorm-c1-soham-fd735dd-partial/README.md`.
-- Its frozen library is in `bench/out/sigstorm-c1-soham-fd735dd/` (git-ignored).
-- Rerun it on the final code once the round-4 fixes and the prototype below are in.
-
-**Prototype, not applied:** handler-context fallback for large requests. Requests above 16 KiB skip the static arena and take a mapping of their own under trylock.
-
-- It removes the handler NULLs that campaign 1 measured: `large` 95–143 NULLs per 5 s run on `fd735dd`, 0 with the patch, on the release and debug builds.
-- Patch, regression test (written, not yet run), measurements and next steps: `docs/research-log/data/proto-handler-fallback/`.
-- Apply it with `git apply docs/research-log/data/proto-handler-fallback/handler-solo-fallback.patch`, then follow the README's next steps.
-
-**Research-log update:** not done; its workflow failed at the usage limit with no files written. Script to relaunch: `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-research-log-wf_de0bc03b-12d.js`.
-
-**Lost in the reboot of 2026-10-21/22:** the session scratch directory (`/tmp/claude-1000/…`), which held builds and test binaries. Everything needed is in git or rebuildable from it.
+- **C1-1, committed in `ae95875`.** Handler requests above 16 KiB skip the static arena; anything the shared heap and the arena cannot serve gets a solo mapping under trylock.
+  - Regression test `signal_large_fallback`: FAIL 3/3 on `fd735dd` (about 45% NULL), PASS 6/6 fixed.
+  - Matrix all green: native, debug, aarch64 and armhf 24/24; musl 23/23 + 1 skipped; TSan, ASan and UBSan 9/9; preload 9/9; mingw 9/9; sigstorm 66/66, now with the `aligned` kind.
+  - Record: `docs/research-log/data/verify/2026-10-22-c1-1-fix-matrix.txt`.
+  - The matrix is now a script: `tools/verify-matrix.sh OUTDIR`.
+- **Tooling audit, committed in `6e4527e`.** `docs/TOOLING_AUDIT.md`. Its recommendations wait for the author's decision; nothing has been changed:
+  - remove the claude-mem stack, the headroom-ai MCP server and OmniRoute;
+  - never install FreeLLMAPI;
+  - make Task Observer manual-only and disable Claude Code Setup;
+  - back up the local-only evidence;
+  - add deny rules and a commit-msg guard.
+- **sigstorm campaign 1** is finished and archived. sohamalloc on `c1a9791`: 0 failures in 540 signal trials, 95% CI [0, 0.007].
+- **The partial rerun on `fd735dd`** (456 of 810 trials, all survived) is superseded by `ae95875`. Rerun the campaign's sohamalloc rows on the final code after review round 4.
 
 ## Next
 
-1. **Review round 4** on `fd735dd` (not done yet, see above). Then fix what it confirms, together with the prototype, run the verification matrix, and review again until no critical or major finding is confirmed. Repeat rounds until none confirms a critical or major finding (gate 2).
-2. **Campaign.** Finish campaign 1. Rerun sohamalloc's rows on the fixed code. Add an `aligned` handler kind to sigstorm (round 3 showed the gap) and run it for all allocators. Copy the data to `docs/research-log/data/`.
+1. **Review round 4** on `ae95875` (running, see above). Fix what it confirms, run `tools/verify-matrix.sh`, and review again; repeat until a round confirms no critical or major finding (gate 2).
+2. **Campaign.**
+   - Rerun sohamalloc's rows of campaign 1 on the final code: all 9 handler kinds, including `aligned`.
+   - Run the `aligned` kind for the other eight allocators.
+   - Copy the data to `docs/research-log/data/`.
 3. **Busy-byte cost** measurement, then the tuned benchmark campaign: ≥10 repetitions with confidence intervals, on a quiet machine with `sudo tools/bench-host.sh tune`.
 4. **Research log.** Complete `02-experiments`, `04-design-decisions` and `06-paper-assessment`, and extend `01-timeline` past 2026-10-19.
 5. **Paper and presentation** only after the four gates hold.
@@ -101,4 +93,4 @@ tests/run_tests.sh --lib build/libsohamalloc.so      # full suite
 tests/preload_smoke.sh --lib build/libsohamalloc.so  # real programs
 ```
 
-The full verification matrix is the `/sohamalloc-verify` skill (`~/.claude/skills/sohamalloc-verify`).
+The full verification matrix: `tools/verify-matrix.sh OUTDIR` (the steps of the `/sohamalloc-verify` skill as one script).
