@@ -257,10 +257,36 @@ static void provision(rec_t *r) {
   o_set(r, head, lcnt + n);
 }
 
+/* Every block of r is on its local list or its remote chain at most once.
+ * Counts alone decide when a page whose blocks all look free is released,
+ * and a page claimed from a pool hands out every block on its lists, so a
+ * block freed twice (once onto each list) must be caught here: walk both,
+ * mark each block in a bitmap, abort on a repeat. */
+#define SOHAM_MAX_CAP ((1u << SOHAM_SLICE_SHIFT) / 16u)
+static SOHAM_NOINLINE void free_lists_unique(rec_t *r, uintptr_t chain, uint32_t n) {
+  uint64_t seen[SOHAM_MAX_CAP / 64];
+  memset(seen, 0, sizeof seen);
+  uintptr_t key = r->r.key;
+  uint32_t bs = r->r.bsize;
+  for (int list = 0; list < 2; list++) {
+    uintptr_t p = list ? chain : o_head(r);
+    uint32_t k = list ? n : o_cnt(r);
+    for (; k > 0 && p != 0; k--) {
+      if (unlikely(!o_block(r, p))) soham_fatal("heap corruption: free-list link overwritten", p);
+      uint32_t i = (uint32_t)((p - r->o.pbase) / bs);
+      if (unlikely(i >= SOHAM_MAX_CAP || (seen[i >> 6] >> (i & 63)) & 1)) soham_fatal("double free detected", p);
+      seen[i >> 6] |= (uint64_t)1 << (i & 63);
+      p = link_dec(key, *(uintptr_t *)p, p);
+    }
+  }
+}
+
 /* Validate a chain of exactly n blocks starting at head and splice it in
  * front of r's local list with one commit.  Aborts on a corrupt chain
- * (racing double frees, overwritten links). */
-static void merge_chain(rec_t *r, uintptr_t head, uint32_t n) {
+ * (racing double frees, overwritten links).  full_check: also check that no
+ * block is on both lists (a page not owned by the caller: claim, resolve);
+ * an owner's collect checks only when every block looks free. */
+static void merge_chain(rec_t *r, uintptr_t head, uint32_t n, bool full_check) {
   if (n == 0) return;
   uintptr_t key = r->r.key;
   uintptr_t p = head;
@@ -275,6 +301,7 @@ static void merge_chain(rec_t *r, uintptr_t head, uint32_t n) {
   }
   uint32_t cnt = o_cnt(r) + n;
   if (unlikely(cnt > r->o.prov)) soham_fatal("double free detected (free count exceeds blocks)", head);
+  if (full_check || cnt == r->o.prov) free_lists_unique(r, head, n);
   *(uintptr_t *)p = link_enc(key, o_head(r), p);
   o_set(r, head, cnt);
 }
@@ -289,7 +316,7 @@ static uint32_t collect(rec_t *r) {
   uint64_t x = atomic_exchange_explicit(&r->x.xfree, 0, memory_order_acquire);
   SOHAM_ASSERT((x & XF_FLAGS) == 0);
   uint32_t n = xf_cnt(x);
-  merge_chain(r, xf_ptr(x), n);
+  merge_chain(r, xf_ptr(x), n, false);
   return n;
 }
 
@@ -391,7 +418,7 @@ static void resolve(rec_t *r) {
         /* Walk the chain before releasing, as pool_claim does: a remote
          * A,B,A double free reaches count == cap with a live block left on
          * the page, and only the exact-length walk exposes it (abort). */
-        merge_chain(r, xf_ptr(x), cnt - r->x.folded);
+        merge_chain(r, xf_ptr(x), cnt - r->x.folded, true);
         give_back = true;
         break;
       }
@@ -416,6 +443,9 @@ static void resolve(rec_t *r) {
 static _Atomic(rec_t *) g_pending;
 
 static void pending_push(rec_t *r) {
+  /* Store-buffering, as in the notify protocol: either the drain below sees
+   * our PENDING (set by the caller's xfree CAS), or this CAS sees its 0. */
+  atomic_thread_fence(memory_order_seq_cst);
   uint32_t z = 0;
   if (!atomic_compare_exchange_strong_explicit(&r->x.pend_state, &z, 1, memory_order_acq_rel, memory_order_relaxed)) return;
   rec_t *old = atomic_load_explicit(&g_pending, memory_order_relaxed);
@@ -430,6 +460,7 @@ static void pending_drain(void) {
     rec_t *nx = r->x.pend_next;
     r->x.pend_next = NULL;
     atomic_store_explicit(&r->x.pend_state, 0, memory_order_release);
+    atomic_thread_fence(memory_order_seq_cst);   /* pairs with pending_push */
     resolve(r);
     r = nx;
   }
@@ -457,8 +488,8 @@ static void notify_push(heap_t *h, rec_t *r) {
   do {
     if (old == NOTIFY_CLOSED) { atomic_store_explicit(&r->x.nstate, 0, memory_order_release); return; }
     r->x.nnext = old;
-  } while (!atomic_compare_exchange_weak_explicit(&h->notify, &old, r, memory_order_release, memory_order_relaxed));
-  if (h->is_shared) atomic_store_explicit(&g_shared_trim, 1, memory_order_relaxed);
+  } while (!atomic_compare_exchange_weak_explicit(&h->notify, &old, r, memory_order_seq_cst, memory_order_relaxed));
+  if (h->is_shared) atomic_store_explicit(&g_shared_trim, 1, memory_order_seq_cst);
 }
 
 /* Owner: move notified full pages back to the avail list. */
@@ -577,7 +608,7 @@ static rec_t *pool_claim(heap_t *h, unsigned c) {
   uint64_t x = atomic_exchange_explicit(&r->x.xfree, 0, memory_order_acq_rel);  /* clears QUEUED, PENDING */
   soham_unlock(&pl->lock);
   uint32_t chain = xf_cnt(x) - r->x.folded;
-  merge_chain(r, xf_ptr(x), chain);
+  merge_chain(r, xf_ptr(x), chain, true);
   r->r.lflags = 0;
   r->o.event_at = r->o.prov;
   r->o.lnext = r->o.lprev = NULL;
@@ -690,8 +721,13 @@ static void shared_trim(void) {
       rel = r;
     }
   }
-  if (!keep && !atomic_load_explicit(&h->notify, memory_order_relaxed))
-    atomic_store_explicit(&g_shared_trim, 0, memory_order_relaxed);
+  if (!keep) {
+    /* Clear, then look again: a push that set the flag before the clear is
+     * visible after the fence (seq_cst push, flag store and fence). */
+    atomic_store_explicit(&g_shared_trim, 0, memory_order_seq_cst);
+    atomic_thread_fence(memory_order_seq_cst);
+    if (atomic_load_explicit(&h->notify, memory_order_relaxed)) atomic_store_explicit(&g_shared_trim, 1, memory_order_relaxed);
+  }
   soham_unlock(&g_shared_lock);
   /* Off the heap's lists: no other thread reaches these pages, and with
    * every block free no remote free can arrive.  collect() walks the remote
@@ -835,6 +871,20 @@ static void *run_alloc(size_t n, bool hb_align, bool *zero) {
 
 static void run_free(rec_t *rh) { page_release(rh); }
 
+/* run_free in handler context: only when the page-heap lock is free
+ * (trylock).  The release engine is left to the next ordinary operation. */
+static bool run_free_try(rec_t *rh) {
+  if (!soham_trylock(&g_ph.lock)) return false;
+  uint32_t ns = rh->r.nslices;
+  uintptr_t base = rh->r.pbase;
+  atomic_store_explicit(&rh->r.owner, OWNER_NONE, memory_order_relaxed);
+  for (uint32_t i = 0; i < ns; i++) { rh[i].r.kind = KIND_NONE; rh[i].r.head_delta = 0; }
+  bool excess, purge;
+  ph_free_locked(base, ns, soham_os_now_ns(), &excess, &purge);
+  soham_unlock(&g_ph.lock);
+  return true;
+}
+
 typedef struct { uintptr_t p; size_t len; } solo_ent_t;
 static soham_lock_t g_solo_lock;
 static solo_ent_t *g_solo_tab;
@@ -935,6 +985,20 @@ static bool solo_free(uintptr_t p) {
   soham_unlock(&g_solo_lock);
   soham_os_unmap((void *)p, len);
   return true;
+}
+
+/* solo_free in handler context, with the table taken by trylock:
+ * 1 freed, 0 not a solo, -1 the table is taken (unknown). */
+static int solo_free_try(uintptr_t p) {
+  if (!soham_trylock(&g_solo_lock)) return -1;
+  size_t i = solo_find_locked(p);
+  if (i == SIZE_MAX) { soham_unlock(&g_solo_lock); return 0; }
+  size_t len = g_solo_tab[i].len;
+  solo_remove_at_locked(i);
+  g_solo_bytes -= len;
+  soham_unlock(&g_solo_lock);
+  soham_os_unmap((void *)p, len);
+  return 1;
 }
 
 /* Resize a solo in place or by moving it (mremap).  NULL: not possible. */

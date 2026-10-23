@@ -66,7 +66,8 @@ void soham_fatal(const char *msg, uintptr_t p) {
 }
 
 void soham_warn(const char *msg, uintptr_t p) {
-  if (!g_cfg.verbose) return;
+  /* The configuration is published with the init state. */
+  if (atomic_load_explicit(&g_init_state, memory_order_acquire) != 2 || !g_cfg.verbose) return;
   wbuf_t w = { .n = 0, .fd = 2 };
   wb_str(&w, "sohamalloc: warning: ");
   wb_str(&w, msg);
@@ -210,45 +211,66 @@ static bool geometry_init(void) {
   return true;
 }
 
+/* The process whose thread runs init (0 before anyone started).  A fork can
+ * cut init off in another thread: the child is a copy of the forking thread
+ * only, so it finds init in progress with nobody to finish it, and takes it
+ * over.  The steps are therefore safe to run again: those that must not
+ * happen twice are skipped when done. */
+static _Atomic int g_init_pid;
+static bool g_key_done;
+
+static void init_body(soham_tls_t *t, bool takeover) {
+  t->state = TLS_INIT;
+  if (takeover) {
+    /* The cut-off initialiser may have held these; every other thread of
+     * this process waits for init and holds none. */
+    soham_lock_reset(&g_heap_lock);
+    soham_lock_reset(&g_meta_lock);
+  }
+  soham_os_random(&g_secret, sizeof g_secret);
+  soham_os_random(&g_rng_seed, sizeof g_rng_seed);
+  bool ok = geometry_init();
+  config_init();
+  if (!ok) soham_fatal("cannot initialise the address-space geometry", 0);
+  classes_init(g_geo.S);
+  atomic_store_explicit(&g_sentinel.r.owner, OWNER_BAD, memory_order_relaxed);
+  soham_lock(&g_heap_lock);
+  if (!g_shared) g_shared = heap_create_locked();
+  if (g_shared) g_shared->is_shared = 1;
+  soham_unlock(&g_heap_lock);
+  if (!g_shared) soham_fatal("cannot create the shared heap", 0);
+  /* May allocate: the recursion lands in the bss arena. */
+  if (!g_key_done) { soham_os_thread_key_init(thread_exit_cb); g_key_done = true; }
+  /* Publish the geometry to the free fast path last: a reader that sees
+   * the new mask also sees the new map and shift (acquire). */
+  g_geo.amask = g_geo.secure ? ~(uintptr_t)0 : 15;
+  atomic_store_explicit(&g_geo.gmask, g_gmap_n_pending - 1, memory_order_release);
+  t->state = TLS_NEW;
+  atomic_store_explicit(&g_init_state, 2, memory_order_release);
+}
+
 /* Returns true when the allocator is ready; false only for a recursive call
  * made by the initialising thread itself (serve it from the bss arena). */
 static SOHAM_NOINLINE bool soham_init(void) {
   soham_tls_t *t = &t_tls;
-  int st = atomic_load_explicit(&g_init_state, memory_order_acquire);
-  if (st == 2) return true;
-  if (st == 0) {
-    int expect = 0;
-    if (atomic_compare_exchange_strong_explicit(&g_init_state, &expect, 1, memory_order_acq_rel, memory_order_acquire)) {
-      t->state = TLS_INIT;
-      soham_os_random(&g_secret, sizeof g_secret);
-      soham_os_random(&g_rng_seed, sizeof g_rng_seed);
-      bool ok = geometry_init();
-      config_init();
-      if (!ok) soham_fatal("cannot initialise the address-space geometry", 0);
-      classes_init(g_geo.S);
-      atomic_store_explicit(&g_sentinel.r.owner, OWNER_BAD, memory_order_relaxed);
-      soham_lock(&g_heap_lock);
-      g_shared = heap_create_locked();
-      if (g_shared) g_shared->is_shared = 1;
-      soham_unlock(&g_heap_lock);
-      if (!g_shared) soham_fatal("cannot create the shared heap", 0);
-      /* These may allocate: the recursion lands in the bss arena. */
-      soham_os_thread_key_init(thread_exit_cb);
-      soham_os_atfork(fork_prepare, fork_parent, fork_child);
-      /* Publish the geometry to the free fast path last: a reader that sees
-       * the new mask also sees the new map and shift (acquire). */
-      g_geo.amask = g_geo.secure ? ~(uintptr_t)0 : 15;
-      atomic_store_explicit(&g_geo.gmask, g_gmap_n_pending - 1, memory_order_release);
-      t->state = TLS_NEW;
-      atomic_store_explicit(&g_init_state, 2, memory_order_release);
-      return true;
-    }
-    st = expect;
-    if (st == 2) return true;
-  }
+  if (atomic_load_explicit(&g_init_state, memory_order_acquire) == 2) return true;
   if (t->state == TLS_INIT) return false;
-  while (atomic_load_explicit(&g_init_state, memory_order_acquire) != 2) soham_os_yield();
-  return true;
+  int me = soham_os_getpid();
+  for (;;) {
+    if (atomic_load_explicit(&g_init_state, memory_order_acquire) == 2) return true;
+    int owner = atomic_load_explicit(&g_init_pid, memory_order_acquire);
+    if (owner != me) {
+      /* Nobody has started (0), or another process started and a fork cut
+       * it off: this thread runs init. */
+      if (atomic_compare_exchange_strong_explicit(&g_init_pid, &owner, me, memory_order_acq_rel, memory_order_acquire)) {
+        atomic_store_explicit(&g_init_state, 1, memory_order_relaxed);
+        init_body(t, owner != 0);
+        return true;
+      }
+      continue;
+    }
+    soham_os_yield();
+  }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -320,6 +342,7 @@ static SOHAM_NOINLINE bool thread_prepare(soham_tls_t *t) {
 }
 
 static void deferred_drain(soham_tls_t *t);
+SOHAM_INLINE bool deferred_pending(soham_tls_t *t);
 
 /* Thread exit (the OS layer's key destructor / FLS callback).  The heap
  * comes from the callback argument, not from TLS: with emulated TLS
@@ -349,6 +372,8 @@ static void thread_exit_cb(void *v) {
   g_heaps_live--;
   soham_unlock(&g_heap_lock);
   if (entered) busy_leave(t);
+  /* A handler that ran during the flush deferred its frees (busy was set). */
+  while (deferred_pending(t)) deferred_drain(t);
 }
 
 /* Frees made by signal handlers that could not run in handler context. */
@@ -360,6 +385,34 @@ static void deferred_push(soham_tls_t *t, void *p) {
   while (!atomic_compare_exchange_weak_explicit(&t->deferred, &old, p, memory_order_relaxed, memory_order_relaxed));
 }
 
+/* Pointers freed in handler context whose solo-table lookup had to wait
+ * (its lock was taken): kept here, not in the block, which might not be
+ * ours.  Any thread's drain frees them; when the table is full the pointer
+ * is leaked.  seq_cst: a drain that clears the flag and then empties the
+ * slots cannot miss a push that fills a slot and then sets the flag. */
+#define DEFER_SLOTS 64u
+static _Atomic(void *) g_defer_slot[DEFER_SLOTS];
+static _Atomic uint8_t g_defer_slots_used;
+
+static bool defer_slot_push(void *p) {
+  for (unsigned i = 0; i < DEFER_SLOTS; i++) {
+    void *z = NULL;
+    if (atomic_compare_exchange_strong_explicit(&g_defer_slot[i], &z, p, memory_order_seq_cst, memory_order_relaxed)) {
+      atomic_store_explicit(&g_defer_slots_used, 1, memory_order_seq_cst);
+      return true;
+    }
+  }
+  return false;
+}
+
+SOHAM_INLINE bool deferred_pending(soham_tls_t *t) {
+  return atomic_load_explicit(&t->deferred, memory_order_relaxed) != NULL ||
+         atomic_load_explicit(&g_defer_slots_used, memory_order_relaxed) != 0;
+}
+
+/* Called outside handler context, busy clear: at the start and the end of
+ * the slow paths (a handler that interrupted one defers its frees until the
+ * interrupted call has finished), at thread exit, in the fork handlers. */
 static void deferred_drain(soham_tls_t *t) {
   void *l;
   while ((l = atomic_exchange_explicit(&t->deferred, NULL, memory_order_relaxed)) != NULL) {
@@ -367,6 +420,13 @@ static void deferred_drain(soham_tls_t *t) {
       void *nx = *(void **)l;
       soham_free(l);
       l = nx;
+    }
+  }
+  if (atomic_load_explicit(&g_defer_slots_used, memory_order_relaxed)) {
+    atomic_store_explicit(&g_defer_slots_used, 0, memory_order_seq_cst);
+    for (unsigned i = 0; i < DEFER_SLOTS; i++) {
+      void *p = atomic_exchange_explicit(&g_defer_slot[i], NULL, memory_order_seq_cst);
+      if (p) soham_free(p);
     }
   }
 }
@@ -468,7 +528,7 @@ static SOHAM_NOINLINE void *alloc_slow(size_t n, bool *zero) {
     if (!p) errno = ENOMEM;
     return p;
   }
-  if (unlikely(atomic_load_explicit(&t->deferred, memory_order_relaxed) != NULL)) deferred_drain(t);
+  if (unlikely(deferred_pending(t))) deferred_drain(t);
   heap_t *h = t->heap;
   void *p;
   busy_enter(t);
@@ -481,6 +541,7 @@ static SOHAM_NOINLINE void *alloc_slow(size_t n, bool *zero) {
     soham_unlock(&g_shared_lock);
   }
   busy_leave(t);
+  if (unlikely(deferred_pending(t))) deferred_drain(t);
   if (unlikely(!p)) errno = ENOMEM;
   return p;
 }
@@ -557,11 +618,22 @@ static void free_nonarena(void *p, uintptr_t a, soham_tls_t *t, bool in_handler)
     soham_warn("free of a pointer not allocated by sohamalloc (before init); leaked", a);
     return;
   }
-  if (in_handler) { deferred_push(t, p); return; }
-  busy_enter(t);
-  bool was_solo = solo_free(a);
-  busy_leave(t);
-  if (was_solo) return;
+  if (in_handler) {
+    /* Unmap a solo at once when its table can be taken by trylock.  Never
+     * write into the pointer: it might not be ours. */
+    int r = solo_free_try(a);
+    if (r > 0) return;
+    if (r < 0) {
+      if (!defer_slot_push(p)) soham_warn("free in a signal handler put off with the side table full; leaked", a);
+      return;
+    }
+  } else {
+    busy_enter(t);
+    bool was_solo = solo_free(a);
+    busy_leave(t);
+    if (unlikely(deferred_pending(t))) deferred_drain(t);
+    if (was_solo) return;
+  }
   if (g_geo.secure) invalid_free(a, "free of a pointer not allocated by sohamalloc");
   soham_warn("free of a pointer not allocated by sohamalloc; leaked", a);
 }
@@ -578,10 +650,16 @@ static SOHAM_NOINLINE void free_slow(void *p) {
   if (unlikely(a & 15)) invalid_free(a, "free of a misaligned pointer");
   if (kind == KIND_RUN) {
     if (unlikely(a != rh->r.pbase)) invalid_free(a, "free of an interior pointer");
-    if (in_handler) { deferred_push(t, p); return; }
+    if (in_handler) {
+      /* Release at once when the page-heap lock is free; otherwise put it
+       * off to the end of the interrupted call (the run is ours). */
+      if (!run_free_try(rh)) deferred_push(t, p);
+      return;
+    }
     busy_enter(t);
     run_free(rh);
     busy_leave(t);
+    if (unlikely(deferred_pending(t))) deferred_drain(t);
     return;
   }
   /* Exact block boundary (line R: stable while the page is allocated).
@@ -592,7 +670,9 @@ static SOHAM_NOINLINE void free_slow(void *p) {
   if (!in_handler) {
     busy_enter(t);
     heap_t *h = t->heap;
-    if (h && atomic_load_explicit(&rh->r.owner, memory_order_relaxed) == t->tag) {
+    uint32_t own = atomic_load_explicit(&rh->r.owner, memory_order_relaxed);
+    if (unlikely(own == OWNER_SPARE)) invalid_free(a, "double free detected (the page is free)");
+    if (h && own == t->tag) {
       if (zero_it) {
         /* Zero after the double-free checks, which read the first word. */
         uintptr_t head = o_head(rh);
@@ -605,8 +685,11 @@ static SOHAM_NOINLINE void free_slow(void *p) {
       remote_free(rh, a, false);
     }
     busy_leave(t);
+    if (unlikely(deferred_pending(t))) deferred_drain(t);
   } else {
     /* Handler context: the lock-free remote path is always safe (§5.3). */
+    if (unlikely(atomic_load_explicit(&rh->r.owner, memory_order_relaxed) == OWNER_SPARE))
+      invalid_free(a, "double free detected (the page is free)");
     if (zero_it) memset((void *)a, 0, rh->r.bsize);
     remote_free(rh, a, true);
   }
@@ -671,6 +754,10 @@ SOHAM_API void *soham_realloc(void *p, size_t n) {
     rec_t *r = rec_of(a);
     rec_t *rh = rec_head(r);
     if (rh->r.kind == KIND_NONE) invalid_free(a, "realloc of an invalid pointer");
+    /* The checks free applies, before the block may be kept. */
+    if (unlikely(a & 15)) invalid_free(a, "realloc of a misaligned pointer");
+    if (rh->r.kind == KIND_RUN ? a != rh->r.pbase : !block_ok(rh, a))
+      invalid_free(a, "realloc of an interior or invalid pointer");
     us = rh->r.kind == KIND_RUN ? rh->r.psize : rh->r.bsize;
     /* Keep the block when it still fits and would not waste over half. */
     if (n <= us && (n >= us / 2 || us <= 16)) return p;
@@ -689,6 +776,7 @@ SOHAM_API void *soham_realloc(void *p, size_t n) {
       busy_enter(t);
       void *q = solo_realloc(a, n);
       busy_leave(t);
+      if (deferred_pending(t)) deferred_drain(t);
       if (q) return q;
     }
   }
@@ -726,11 +814,12 @@ static void *alloc_aligned(size_t align, size_t n) {
     return p;
   }
   void *p = NULL;
-  if (atomic_load_explicit(&t->deferred, memory_order_relaxed)) deferred_drain(t);
+  if (deferred_pending(t)) deferred_drain(t);
   busy_enter(t);
   if (align <= g_geo.H && n < SOHAM_SOLO_MIN) p = run_alloc(n, align > g_geo.S, &zero);
   else p = solo_alloc(n, align);
   busy_leave(t);
+  if (unlikely(deferred_pending(t))) deferred_drain(t);
   if (!p) errno = ENOMEM;
   return p;
 }
@@ -760,7 +849,7 @@ SOHAM_API void *soham_memalign(size_t align, size_t n) {
 }
 
 SOHAM_API void soham_free_sized(void *p, size_t n) {
-  if (p && g_geo.secure) {
+  if (p && atomic_load_explicit(&g_init_state, memory_order_acquire) == 2 && g_geo.secure) {
     size_t us = soham_usable_size(p);
     if (us && n > us) invalid_free((uintptr_t)p, "free_sized with a size larger than the block");
   }
@@ -780,7 +869,7 @@ SOHAM_API void soham_collect(int force) {
   if (atomic_load_explicit(&g_init_state, memory_order_acquire) != 2) return;
   soham_tls_t *t = &t_tls;
   if (atomic_load_explicit(&t->busy, memory_order_relaxed) & BUSY_IN) return;
-  if (atomic_load_explicit(&t->deferred, memory_order_relaxed)) deferred_drain(t);
+  if (deferred_pending(t)) deferred_drain(t);
   busy_enter(t);
   pending_drain();
   if (force && t->heap) {
@@ -791,6 +880,7 @@ SOHAM_API void soham_collect(int force) {
   else shared_trim();
   ph_purge(force ? PURGE_ALL : PURGE_DECAY);
   busy_leave(t);
+  if (deferred_pending(t)) deferred_drain(t);
 }
 
 typedef struct {
@@ -868,6 +958,7 @@ SOHAM_API int soham_get_stats(struct soham_stats *out) {
   out->heaps_pooled = pooled;
   soham_unlock(&g_heap_lock);
   busy_leave(t);
+  if (deferred_pending(t)) deferred_drain(t);
   return 0;
 }
 
@@ -935,6 +1026,7 @@ SOHAM_API int soham_check_heap(void) {
   }
   soham_unlock(&g_ph.lock);
   busy_leave(t);
+  if (deferred_pending(t)) deferred_drain(t);
   return errors;
 }
 
@@ -946,6 +1038,15 @@ SOHAM_API const char *soham_version(void) { return SOHAMALLOC_VERSION; }
 
 static void fork_prepare(void) {
   soham_tls_t *t = &t_tls;
+  /* A fork from inside init (not done) locks nothing.  Otherwise the
+   * allocator is initialised first (an init in progress is waited for, one
+   * not started is run here) and every lock is taken below, so no init and
+   * no operation of another thread can be cut off by the fork.  (Skipping
+   * before init was not enough: another thread could finish init and take
+   * a lock between this check and the fork.) */
+  t->fork_skip = (uint8_t)(t->state == TLS_INIT);
+  if (t->fork_skip) return;
+  if (atomic_load_explicit(&g_init_state, memory_order_acquire) != 2) soham_init();
   /* Per thread: glibc runs the atfork handlers of concurrently forking
    * threads at the same time, so one saved value for the process would let a
    * thread restore another thread's busy byte. */
@@ -958,9 +1059,22 @@ static void fork_prepare(void) {
   soham_lock(&g_ph.lock);
   soham_lock(&g_solo_lock);
   soham_lock(&g_meta_lock);
+  /* Every lock is ours until fork_parent/fork_child: allocations in the
+   * rest of the fork window (atfork handlers registered before ours) take
+   * the ordinary paths, with no-op locks (t_fork_owner). */
+  signal_fence();
+  t_fork_owner = 1;
+  signal_fence();
+  atomic_store_explicit(&t->busy, t->fork_busy, memory_order_relaxed);
 }
 
 static void fork_parent(void) {
+  if (t_tls.fork_skip) { t_tls.fork_skip = 0; return; }
+  /* A handler must see busy while the locks are released one by one. */
+  atomic_store_explicit(&t_tls.busy, (uint8_t)(t_tls.fork_busy | BUSY_IN), memory_order_relaxed);
+  signal_fence();
+  t_fork_owner = 0;
+  signal_fence();
   soham_unlock(&g_meta_lock);
   soham_unlock(&g_solo_lock);
   soham_unlock(&g_ph.lock);
@@ -969,10 +1083,16 @@ static void fork_parent(void) {
   soham_unlock(&g_heap_lock);
   signal_fence();
   atomic_store_explicit(&t_tls.busy, t_tls.fork_busy, memory_order_relaxed);
+  if (!(t_tls.fork_busy & BUSY_IN) && deferred_pending(&t_tls)) deferred_drain(&t_tls);
 }
 
 static void fork_child(void) {
   soham_tls_t *t = &t_tls;
+  if (t->fork_skip) { t->fork_skip = 0; return; }
+  atomic_store_explicit(&t->busy, (uint8_t)(t->fork_busy | BUSY_IN), memory_order_relaxed);
+  signal_fence();
+  t_fork_owner = 0;
+  signal_fence();
   soham_lock_reset(&g_meta_lock);
   soham_lock_reset(&g_solo_lock);
   soham_lock_reset(&g_ph.lock);
@@ -999,6 +1119,7 @@ static void fork_child(void) {
   if (t->heap) t->heap->busy_ptr = &t->busy;
   signal_fence();
   atomic_store_explicit(&t->busy, t->fork_busy, memory_order_relaxed);
+  if (!(t->fork_busy & BUSY_IN) && deferred_pending(t)) deferred_drain(t);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1041,6 +1162,21 @@ SOHAM_API void soham_internal_geometry(struct soham_internal_geometry *out) {
 __attribute__((destructor)) static void soham_exit_report(void) {
   if (g_cfg.stats_at_exit && atomic_load_explicit(&g_init_state, memory_order_acquire) == 2) soham_stats_print(2);
 }
+
+/* At unload (dlclose of a module that embeds the prefixed archive) or exit:
+ * delete the thread key, whose destructor would otherwise be called by
+ * every later exiting thread, into code that may be unmapped.  Threads
+ * that exit after this keep their heaps (at exit the process is ending). */
+/* Fork handlers are registered at load, not by init: a fork during init
+ * then waits for it (fork_prepare), and pthread_atfork never runs inside
+ * init.  It may allocate: init then runs here, before main. */
+__attribute__((constructor)) static void soham_register_atfork(void) {
+  soham_os_atfork(fork_prepare, fork_parent, fork_child);
+}
+
+__attribute__((destructor)) static void soham_fini(void) {
+  if (atomic_load_explicit(&g_init_state, memory_order_acquire) == 2) soham_os_thread_key_fini();
+}
 #endif
 
 /* ---------------------------------------------------------------------- */
@@ -1069,9 +1205,13 @@ SOHAM_ALIAS(__libc_realloc, soham_realloc);
 SOHAM_ALIAS(__libc_memalign, soham_memalign);
 SOHAM_ALIAS(cfree, soham_free);
 
-SOHAM_API void *valloc(size_t n) { return soham_memalign(g_geo.B ? g_geo.B : soham_os_page_size(), n); }
+/* The geometry is published with the init state. */
+static size_t base_page(void) {
+  return atomic_load_explicit(&g_init_state, memory_order_acquire) == 2 ? g_geo.B : soham_os_page_size();
+}
+SOHAM_API void *valloc(size_t n) { return soham_memalign(base_page(), n); }
 SOHAM_API void *pvalloc(size_t n) {
-  size_t B = g_geo.B ? g_geo.B : soham_os_page_size();
+  size_t B = base_page();
   if (n > SIZE_MAX - B) { errno = ENOMEM; return NULL; }
   n = (n + B - 1) & ~(B - 1);
   return soham_memalign(B, n ? n : B);
@@ -1089,10 +1229,21 @@ struct soham_mallinfo { int arena, ordblks, smblks, hblks, hblkhd, usmblks, fsmb
 
 static struct soham_mallinfo2 soham_mallinfo2_impl(void) {
   struct soham_stats s;
-  soham_get_stats(&s);
+  size_t nsolo = 0;
+  /* The solo count under its lock, and never from a handler that
+   * interrupted the allocator (soham_get_stats then returns -1). */
+  if (soham_get_stats(&s) == 0 && atomic_load_explicit(&g_init_state, memory_order_acquire) == 2) {
+    soham_tls_t *t = &t_tls;
+    if (busy_enter(t)) {
+      soham_lock(&g_solo_lock);
+      nsolo = g_solo_n;
+      soham_unlock(&g_solo_lock);
+      busy_leave(t);
+    }
+  }
   struct soham_mallinfo2 m = { 0 };
   m.arena = s.committed - s.solo;
-  m.hblks = g_solo_n;
+  m.hblks = nsolo;
   m.hblkhd = s.solo;
   m.uordblks = s.in_use;
   m.fordblks = s.cached_heaps + s.cached_pools + s.pageheap_free;

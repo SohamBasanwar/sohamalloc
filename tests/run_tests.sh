@@ -194,6 +194,9 @@ fi
 #   flags: soham  = needs sohamalloc (self-skips otherwise; the regress/
 #                   reproducers do not, so the runner skips them)
 #          info   = informational unless the allocator is sohamalloc
+#          posix  = not built or run for mingw;  nosan = not with a sanitizer
+#   kind plugin (prefixed tables only): the source is also built with
+#          -DTEST_PLUGIN, linked with the prefixed archive, into <test>.plugin.so
 if [ "$PREFIXED" = 1 ]; then
     TABLE="
 api_semantics      prefixed/api_semantics.c      c    180
@@ -205,6 +208,8 @@ internal_props     prefixed/internal_props.c     c    120  soham
 regress_check_heap regress/check_heap_concurrent.c c  120  soham
 regress_thread_detach regress/thread_exit_detach.c c   60  soham
 regress_stats_race regress/stats_concurrent.c c   60  soham
+regress_dlclose    regress/dlclose_unload.c    plugin 60 soham posix nosan
+regress_fork_init  regress/fork_during_init.c  c   180 soham posix nosan
 "
 else
     TABLE="
@@ -232,6 +237,8 @@ regress_sig_aligned regress/signal_aligned_enomem.c c 60 soham
 regress_shared_trim regress/signal_shared_release.c c 60 soham
 regress_bss_bounded regress/bss_bounded.c c 60 soham
 regress_large_fallback regress/signal_large_fallback.c c 60 soham
+regress_deferred_free regress/signal_deferred_free.c c 120 soham
+regress_atfork_alloc regress/fork_atfork_alloc.c c 60 soham
 "
 fi
 
@@ -254,9 +261,22 @@ echo "   allocator : $( if [ "$PREFIXED" = 1 ]; then echo "prefixed: $PREFIXED_L
 echo "   sohamalloc: $( [ "$SOHAM" = 1 ] && echo yes || echo no )   target: ${CROSS:-native} ($CC)   sanitizer: ${SANITIZE:-none}   quick: $QUICK"
 echo "   output    : $OUT"
 
-build_one() {    # name -> writes $OUT/name.buildlog, returns status
+build_one() {    # name -> writes $OUT/name.buildlog, returns status (98: skipped here)
     local name="$1" src="$TESTS/${SRC[$1]}" kind="${KIND[$1]}" bin="$OUT/$1$EXE" log="$OUT/$1.buildlog"
     local cmd
+    if { [[ " ${FLAGS[$name]} " == *" posix "* ]] && [ "$CROSS" = mingw ]; } ||
+       { [[ " ${FLAGS[$name]} " == *" nosan "* ]] && [ -n "$SANITIZE" ]; }; then
+        echo "not for this target" > "$log"; return 98
+    fi
+    if [ "$kind" = plugin ]; then
+        cmd=("$CC" $CFLAGS -DTEST_PREFIXED=1 -DTEST_PLUGIN=1 -shared -fPIC "$src" "$PREFIXED_LIB" -o "$bin.plugin.so" -lpthread)
+        echo "${cmd[*]}" > "$log"
+        "${cmd[@]}" >> "$log" 2>&1 || return 1
+        cmd=("$CC" $CFLAGS "$src" -o "$bin" $EXTRA_LDFLAGS $TARGET_LIBS -ldl -lpthread)
+        echo "${cmd[*]}" >> "$log"
+        "${cmd[@]}" >> "$log" 2>&1
+        return
+    fi
     if [ "$kind" = cxx ]; then
         if [ "$HAVE_CXX" != 1 ]; then echo "no C++ compiler for this target" > "$log"; return 99; fi
         cmd=("$CXX" $CXXFLAGS $SANFLAGS "$src" -o "$bin" $EXTRA_LDFLAGS $LINK_LIBS $TARGET_LIBS)
@@ -303,6 +323,13 @@ printf '%-20s %-14s %8s  %s\n' -------------------- -------------- -------- ----
 for name in "${NAMES[@]}"; do
     bin="$OUT/$name$EXE"; log="$LOGS/$name.log"
     detail=""; status=""
+    if [ "${BUILD_RC[$name]}" = 98 ]; then
+        status=SKIP; detail="not for this target or sanitizer"
+        nskip=$((nskip + 1))
+        printf '%-20s %-14s %8s  %s\n' "$name" "$status" "-" "$detail"
+        RESULTS+=("$name $status")
+        continue
+    fi
     if [ "${BUILD_RC[$name]}" = 99 ]; then
         status=SKIP; detail="no C++ compiler for this target"
         nskip=$((nskip + 1))

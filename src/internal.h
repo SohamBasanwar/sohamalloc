@@ -277,6 +277,13 @@ _Static_assert(sizeof(window_t) <= 4096, "window header must fit in one base pag
 
 typedef struct { _Atomic uint32_t v; } soham_lock_t;
 
+/* Set on the thread that forks, between taking every allocator lock in
+ * fork_prepare and releasing them in fork_parent/fork_child: it already
+ * holds them all, so its blocking locks and unlocks are no-ops and code run
+ * in that window (other atfork handlers) can allocate normally.  Trylocks are
+ * unchanged, so a signal handler in the window still falls back (§7). */
+static _Thread_local uint8_t t_fork_owner SOHAM_TLS_MODEL;
+
 SOHAM_HIDDEN void soham_lock_slow(soham_lock_t *l);
 #if SOHAM_DEBUG
 SOHAM_HIDDEN void soham_debug_check_blocking(void);   /* api.c */
@@ -285,6 +292,7 @@ SOHAM_INLINE void soham_lock(soham_lock_t *l) {
 #if SOHAM_DEBUG
   soham_debug_check_blocking();       /* never a blocking lock in handler context */
 #endif
+  if (unlikely(t_fork_owner)) return;
   uint32_t c = 0;
   if (likely(atomic_compare_exchange_strong_explicit(&l->v, &c, 1, memory_order_acquire, memory_order_relaxed))) return;
   soham_lock_slow(l);
@@ -294,6 +302,7 @@ SOHAM_INLINE bool soham_trylock(soham_lock_t *l) {
   return atomic_compare_exchange_strong_explicit(&l->v, &c, 1, memory_order_acquire, memory_order_relaxed);
 }
 SOHAM_INLINE void soham_unlock(soham_lock_t *l) {
+  if (unlikely(t_fork_owner)) return;
   if (unlikely(atomic_exchange_explicit(&l->v, 0, memory_order_release) == 2)) soham_os_wake(&l->v);
 }
 SOHAM_INLINE void soham_lock_reset(soham_lock_t *l) { atomic_store_explicit(&l->v, 0, memory_order_relaxed); }
@@ -337,6 +346,7 @@ typedef struct {
   uint8_t state;
   uint8_t trymode;         /* handler context: every lock is a trylock (§5.3) */
   uint8_t fork_busy;       /* busy saved by this thread's fork_prepare (§8) */
+  uint8_t fork_skip;       /* fork_prepare locked nothing (before init) */
   _Atomic(void *) deferred; /* frees deferred from handler context */
 } soham_tls_t;
 

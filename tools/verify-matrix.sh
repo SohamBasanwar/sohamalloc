@@ -43,6 +43,7 @@ step build-mingw bash -c 'cmake -S . -B build-mingw -DCMAKE_BUILD_TYPE=Release -
 # ------------------------------------------------------------------ suites
 step native   tests/run_tests.sh --lib build/libsohamalloc.so
 step debug    tests/run_tests.sh --lib build-debug/libsohamalloc.so
+step prefixed tests/run_tests.sh --prefixed-lib build/libsohamalloc-prefixed.a
 step tsan     tests/run_tests.sh --sanitize=thread --prefixed-lib build-thread/libsohamalloc-prefixed.a
 step asan     tests/run_tests.sh --sanitize=address --prefixed-lib build-address/libsohamalloc-prefixed.a
 step ubsan    tests/run_tests.sh --sanitize=undefined --prefixed-lib build-undefined/libsohamalloc-prefixed.a

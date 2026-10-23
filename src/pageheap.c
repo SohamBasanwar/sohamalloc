@@ -476,11 +476,10 @@ static void ph_fork_child(void) {
   }
 }
 
-/* Return k slices starting at address a (may span hugeblocks). */
-static void ph_free(uintptr_t a, size_t k) {
-  uint64_t now = soham_os_now_ns();
-  bool purge = false;
-  soham_lock(&g_ph.lock);
+/* Return k slices starting at address a (may span hugeblocks), ph.lock
+ * held.  *excess and *purge say what the release engine should do after the
+ * unlock (ph_after_op). */
+static void ph_free_locked(uintptr_t a, size_t k, uint64_t now, bool *excess, bool *purge) {
   window_t *w = (window_t *)(a & ~g_geo.wmask);
   size_t off = a - w->base - g_geo.data_off;
   uint32_t i = (uint32_t)(off / g_geo.H);
@@ -493,11 +492,18 @@ static void ph_free(uintptr_t a, size_t k) {
     s = 0;
     i++;
   }
-  if (now - g_ph.last_purge_ns >= g_cfg.purge_interval_ns) purge = true;
+  *purge = now - g_ph.last_purge_ns >= g_cfg.purge_interval_ns;
   ph_peak_roll(now);
   /* Batch: act once the excess reaches 1/8 of the limit (at least 1 MiB). */
   size_t lim = ph_dirty_limit();
-  bool excess = (g_ph.s_dirty << SOHAM_SLICE_SHIFT) > lim + (lim / 8 > MiB ? lim / 8 : MiB);
+  *excess = (g_ph.s_dirty << SOHAM_SLICE_SHIFT) > lim + (lim / 8 > MiB ? lim / 8 : MiB);
+}
+
+static void ph_free(uintptr_t a, size_t k) {
+  uint64_t now = soham_os_now_ns();
+  bool excess, purge;
+  soham_lock(&g_ph.lock);
+  ph_free_locked(a, k, now, &excess, &purge);
   soham_unlock(&g_ph.lock);
   ph_after_op(excess, purge);
 }
@@ -537,7 +543,8 @@ static void purge_finish(const purge_span_t *sp, int zeroed) {
 static void ph_purge(int mode) {
   purge_span_t spans[PURGE_MAX_RANGES];
   soham_os_range_t ranges[PURGE_MAX_RANGES];
-  for (int round = 0; round < 256; round++) {
+  /* PURGE_ALL (malloc_trim, soham_collect(1)) runs until nothing is left. */
+  for (int round = 0; mode == PURGE_ALL || round < 256; round++) {
     size_t n = 0;
     bool more = false;
     uint64_t now = soham_os_now_ns();

@@ -1,0 +1,132 @@
+# Review round 4 regression tests: ae95875 against the fixed working tree, 2026-10-23T16:05:47Z
+# old: frozen ae95875 libraries (bench/out/review4-libs-ae95875; release sha256 96810dbac6e41a25)
+# new: build/ and build-debug/ of the working tree on e490087-dirty; host 7.0.0-38-generic
+## signal_deferred_free OLD run 1
+part 1: 200 runs freed by interrupting handlers; in use dropped by 0 KiB (expected about 58593 KiB)
+part 1: runs freed in handlers were kept
+part 2: 4 of 48 runs freed by handlers during thread exit; in use grew by 1280 KiB
+part 2: runs freed in handlers during thread exit stayed in use
+FAIL
+exit=1
+## signal_deferred_free NEW run 1
+part 1: 200 runs freed by interrupting handlers; in use dropped by 63999 KiB (expected about 58593 KiB)
+part 2: 1 of 48 runs freed by handlers during thread exit; in use grew by 0 KiB
+PASS
+exit=0
+## fork_atfork_alloc OLD run 1
+600 handler calls in the parent, 598 NULL; 299 children saw NULL
+FAIL
+exit=1
+## fork_atfork_alloc NEW run 1
+600 handler calls in the parent, 0 NULL; 0 children saw NULL
+PASS
+exit=0
+## signal_deferred_free OLD run 2
+part 1: 200 runs freed by interrupting handlers; in use dropped by 0 KiB (expected about 58593 KiB)
+part 1: runs freed in handlers were kept
+part 2: 5 of 48 runs freed by handlers during thread exit; in use grew by 1600 KiB
+part 2: runs freed in handlers during thread exit stayed in use
+FAIL
+exit=1
+## signal_deferred_free NEW run 2
+part 1: 200 runs freed by interrupting handlers; in use dropped by 63999 KiB (expected about 58593 KiB)
+part 2: 0 of 48 runs freed by handlers during thread exit; in use grew by 0 KiB
+part 2: no handler call landed in a thread exit
+PASS
+exit=0
+## fork_atfork_alloc OLD run 2
+600 handler calls in the parent, 598 NULL; 299 children saw NULL
+FAIL
+exit=1
+## fork_atfork_alloc NEW run 2
+600 handler calls in the parent, 0 NULL; 0 children saw NULL
+PASS
+exit=0
+## invalid_frees OLD
+orphan local, remote   WRONG (exited)
+orphan local, rest     ok (exited)
+zeroed block           ok (exited)
+untouched blocks       ok (exited)
+link look-alike        ok (exited)
+FAIL
+exit=1
+## invalid_frees NEW
+orphan local, remote   ok (aborted)
+orphan local, rest     ok (exited)
+zeroed block           ok (exited)
+untouched blocks       ok (exited)
+link look-alike        ok (exited)
+PASS
+exit=0
+## invalid_frees NEW debug
+orphan local, remote   ok (aborted)
+orphan local, rest     ok (exited)
+zeroed block           ok (exited)
+untouched blocks       ok (exited)
+link look-alike        ok (exited)
+PASS
+exit=0
+## dlclose_unload OLD (prefixed suite) run 1
+TEST                 RESULT             TIME  DETAIL
+-------------------- -------------- --------  ------------------------------
+regress_dlclose      FAIL               0.0s  exit status 1: FAIL: a thread exiting after dlclose crashed (stale key destructor)
+
+== 0 passed, 1 failed, 0 skipped, 0 informational in 0s
+   logs: /home/sohambasanwar/sohamalloc/build-tests/native-prefixed/logs
+exit=1
+## dlclose_unload NEW (prefixed suite) run 1
+TEST                 RESULT             TIME  DETAIL
+-------------------- -------------- --------  ------------------------------
+regress_dlclose      PASS               0.0s  
+
+== 1 passed, 0 failed, 0 skipped, 0 informational in 0s
+   logs: /home/sohambasanwar/sohamalloc/build-tests/native-prefixed/logs
+exit=0
+## fork_during_init OLD (prefixed suite) run 1
+TEST                 RESULT             TIME  DETAIL
+-------------------- -------------- --------  ------------------------------
+regress_fork_init    FAIL              45.1s  exit status 1: FAIL
+
+== 0 passed, 1 failed, 0 skipped, 0 informational in 45s
+   logs: /home/sohambasanwar/sohamalloc/build-tests/native-prefixed/logs
+exit=1
+## fork_during_init NEW (prefixed suite) run 1
+TEST                 RESULT             TIME  DETAIL
+-------------------- -------------- --------  ------------------------------
+regress_fork_init    PASS               0.1s  
+
+== 1 passed, 0 failed, 0 skipped, 0 informational in 0s
+   logs: /home/sohambasanwar/sohamalloc/build-tests/native-prefixed/logs
+exit=0
+## dlclose_unload OLD (prefixed suite) run 2
+TEST                 RESULT             TIME  DETAIL
+-------------------- -------------- --------  ------------------------------
+regress_dlclose      FAIL               0.0s  exit status 1: FAIL: a thread exiting after dlclose crashed (stale key destructor)
+
+== 0 passed, 1 failed, 0 skipped, 0 informational in 0s
+   logs: /home/sohambasanwar/sohamalloc/build-tests/native-prefixed/logs
+exit=1
+## dlclose_unload NEW (prefixed suite) run 2
+TEST                 RESULT             TIME  DETAIL
+-------------------- -------------- --------  ------------------------------
+regress_dlclose      PASS               0.0s  
+
+== 1 passed, 0 failed, 0 skipped, 0 informational in 0s
+   logs: /home/sohambasanwar/sohamalloc/build-tests/native-prefixed/logs
+exit=0
+## fork_during_init OLD (prefixed suite) run 2
+TEST                 RESULT             TIME  DETAIL
+-------------------- -------------- --------  ------------------------------
+regress_fork_init    FAIL              39.1s  exit status 1: FAIL
+
+== 0 passed, 1 failed, 0 skipped, 0 informational in 39s
+   logs: /home/sohambasanwar/sohamalloc/build-tests/native-prefixed/logs
+exit=1
+## fork_during_init NEW (prefixed suite) run 2
+TEST                 RESULT             TIME  DETAIL
+-------------------- -------------- --------  ------------------------------
+regress_fork_init    PASS               0.1s  
+
+== 1 passed, 0 failed, 0 skipped, 0 informational in 0s
+   logs: /home/sohambasanwar/sohamalloc/build-tests/native-prefixed/logs
+exit=0

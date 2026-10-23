@@ -91,7 +91,7 @@ A remote freer cannot walk the owner's list. A cycle in the remote chain (a thre
 - **H1.** A heap is held by exactly one thread at a time: its running thread, or a thread holding it exclusively (the pool, or the fork child). Only the holder changes owner words of its pages. So the local-free check `owner == tag` cannot be invalidated between the check and the store.
 - **H2.** `tls.busy` is set around every allocator operation of the thread that touches its heap or takes any allocator lock: the fast paths, the slow paths, init and heap attach (`thread_prepare`), thread exit, `soham_collect`, `soham_get_stats` and `soham_check_heap` (`busy_enter`/`busy_leave`). A signal handler that finds it set never touches the thread's heap and never waits for a lock:
   - its allocations (the malloc family, the aligned family and C++ `new`) use the shared heap via trylock (`trymode`), or the static arena (`handler_alloc`). Before 2026-10-21 the aligned family went straight to the static arena and failed with ENOMEM once it was used up (defect R3-2);
-  - its frees use the lock-free remote path, or the deferred list for runs and solos.
+  - its frees of blocks use the lock-free remote path. A run is released at once when the page-heap lock can be taken by trylock, and a solo is unmapped at once when the solo table can; otherwise the run goes onto the thread's deferred list. A pointer whose solo lookup must wait goes into a 64-entry side table and is never written into, since it might not be ours (§5.4).
 - **H3.** In trymode no blocking lock is ever taken: every lock goes through `lock_or_try()`, and work that needs a blocking lock is skipped (the refill's trim of empty avail pages, the decay tick, `pending_drain`). SOHAM_DEBUG builds enforce it: `soham_lock()` aborts in trymode (`soham_debug_check_blocking`). Violated before 2026-10-21 by the refill's trim (defect R2-1, `docs/research-log/03-defects-and-faults.md`).
 
 ### 4.1 The shared heap and the static arena
@@ -161,7 +161,8 @@ When a heap retires its exhausted `cur` page to the full list, it sets WATCH wit
 - A handler that becomes responsible pushes the page onto the global pending stack (`pend_state` prevents double insertion). The next slow path of any thread runs `resolve`.
 - An entry can be stale: the page may have been claimed, released and reused, even as a run. So `resolve` reads the page class only after seeing PENDING, and rechecks both under the class pool's lock.
 - The deferred-free list is taken with an atomic exchange and pushed with a CAS. A handler can run between any two instructions of the owner.
-- Handler frees of runs and solos go onto the thread's TLS deferred list, which is drained at the thread's next allocator call.
+- **Handler frees of runs and solos** are done at once when their lock can be taken by trylock (`run_free_try`, `solo_free_try`), which is the common case: the interrupted call holds that lock only inside a page-heap or solo-table operation. Otherwise the run goes onto the thread's TLS deferred list, and a pointer whose solo lookup must wait goes into a 64-entry side table (`defer_slot_push`; when it is full, the pointer is leaked with a warning).
+- **Draining** (`deferred_drain`, which also empties the side table) happens at the start and the end of the slow paths, at the end of `soham_collect`, `soham_get_stats` and `soham_check_heap`, in the fork handlers, and at the end of thread exit. So a free that a handler had to defer is done when the interrupted call finishes. Before 2026-10-23 it waited for the thread's next allocation slow path, possibly forever; frees deferred during thread exit leaked (review round 4).
 
 ### 5.5 Page heap release (§6)
 
@@ -209,9 +210,15 @@ The fork-prepare handler takes them in exactly this order; the parent and child 
 
 ## 7. Fork
 
-- **prepare:** save the calling thread's busy byte in its own TLS (`fork_busy`) and set `BUSY_IN`, then take every lock in the order above. The saved value is per thread because glibc runs the atfork handlers of threads that fork at the same time concurrently: with one process-wide copy (before 2026-10-21), a thread could restore another thread's busy byte, and a thread without a heap then crashed in the malloc fast path (defect R3-1).
-- **parent:** release the locks and restore the busy byte.
-- **child:** reset every lock. Every other thread's heap that was not inside an operation (its owner's `busy` byte is readable in the child) goes to the heap pool as-is, touching no page metadata, which keeps the child copy-on-write friendly. A heap that was inside an operation is leaked. The child re-seeds the RNG.
+- **Registration.** The handlers are registered at load by an ELF constructor, not by init. Before 2026-10-23 init registered them at its end, so a fork in the middle of another thread's init left a child that could never finish it (review round 4).
+- **prepare:**
+  - It first initialises the allocator if needed: an init in progress is waited for, and one not started is run here. A child never copies a half-built allocator, and every lock can be taken below. (A first fix skipped locking before init; another thread could then finish init and take a lock just before the fork, and 1 child in 40 hung.) Only a fork from inside init itself locks nothing (`fork_skip`).
+  - It saves the calling thread's busy byte in its own TLS (`fork_busy`) and sets `BUSY_IN`, then takes every lock in the order above.
+  - Then it marks the thread as holding them all (`t_fork_owner`) and clears `BUSY_IN`. Until parent or child runs, its blocking locks and unlocks are no-ops, so atfork handlers registered before ours, which run in that window, allocate normally. Before 2026-10-23 they were served like signal handlers and failed. Trylocks are unchanged, so a signal handler in the window still falls back. The saved value is per thread because glibc runs the atfork handlers of threads that fork at the same time concurrently: with one process-wide copy (before 2026-10-21), a thread could restore another thread's busy byte, and a thread without a heap then crashed in the malloc fast path (defect R3-1).
+- **parent:** set `BUSY_IN`, clear `t_fork_owner`, release the locks, restore the busy byte, and drain deferred frees.
+- **child:** set `BUSY_IN`, clear `t_fork_owner`, reset every lock. Every other thread's heap that was not inside an operation (its owner's `busy` byte is readable in the child) goes to the heap pool as-is, touching no page metadata, which keeps the child copy-on-write friendly. A heap that was inside an operation is leaked. The child re-seeds the RNG.
+- **Init cut off by a fork.** A fork that bypasses the handlers, or one that races with the very start of init, can still leave a child with init in progress. Init is owned by a process id (`g_init_pid`), so the child's first allocation takes it over and reruns its steps. Those that must not run twice, the thread key and the shared heap, are skipped when done.
+- **Orphan pages with a resolver in flight.** A thread of the parent that was inside `resolve()`, or between the two steps of a pending push, does not exist in the child. Such a page keeps PENDING with nobody responsible in the child and is never pooled or released there. This strands at most a few pages per fork (review round 4, minor; not fixed).
 
 ## 8. Deviations from IMPL_SPEC_v0 (and why)
 
@@ -236,13 +243,16 @@ The fork-prepare handler takes them in exactly this order; the parent and child 
 - **The `rseq` per-CPU mode is not implemented** (plan P4).
 - **Memory freed while a thread only uses its fast paths waits.** The decay check runs on page-heap operations and on every 64th small-object refill. A program that afterwards only reuses a few hot blocks keeps the freed memory until its next slow path. A background purge thread would fix this; none exists.
 - **Pages freed entirely by other threads** go back when the owner next refills that class (`bin_trim_avail`), or when the owner exits. Not before.
-- **Large and aligned runs take whole hugeblocks.** Runs over 32 slices, and any alignment above 64 KiB, are hugeblock-aligned. Under a tight `RLIMIT_AS`, or for many 256 KiB-aligned blocks, this multiplies address space and commit by up to 8×.
+- **Large and aligned runs take whole hugeblocks.** Runs over 32 slices, and any alignment above 64 KiB, are hugeblock-aligned. Under a tight `RLIMIT_AS`, or for many 256 KiB-aligned blocks, this multiplies address space and commit by up to 32× (a one-slice request takes a whole hugeblock of 32 slices; corrected 2026-10-23).
 - **Growing a run with realloc copies.** There is no in-place growth.
 - **32-bit window placement** gives up after a 2×W over-map fails, even when aligned free gaps remain (about 18% of the heap left unused on armhf).
 - **The Windows lock wait** yields in a loop instead of WaitOnAddress.
 - **Small address-space limits.** Under a small `RLIMIT_AS` the reserved windows (at least 64 MiB each) and the granule map (sized for the whole 48-bit address space: 4 MiB with 64 MiB windows) take a large share of the limit. At `ulimit -v` 128 MiB about 60 MiB is usable, against about 100 MiB with glibc. Allocation still fails cleanly with ENOMEM (review finding R3-5).
 - **Free-list keys come from one generator stream per heap.** Each page's link key is the next output of the heap's xorshift64* generator, which is invertible, and the generator is seeded through an invertible mix. Learning one key therefore gives the heap's other keys. Link encoding raises the bar against blind corruption; it is not a guarantee against an attacker who can read free blocks (review finding R3-6, from code analysis). A keyed, non-invertible derivation of each key is planned.
 - **The shared heap keeps one current page per size class** that handlers used, and full pages with less than 1/8 free, until `soham_collect(1)` or `malloc_trim` (§4.1).
+- **Unloading a module that embeds the prefixed archive.** At unload an ELF destructor deletes the allocator's thread key, so no exiting thread calls into the unmapped module. Before 2026-10-23 one did, and crashed (review round 4). The module's windows and heaps stay mapped: their memory is leaked at unload.
+- **Statistics after a large peak.** The slice records of memory that was used and then released stay resident, and `soham_get_stats` does not count them in `metadata` or `resident_est` (review round 4, minor).
+- **Double frees of solos in the default tier.** A second free of a solo (32 MiB or more) is not found in the solo table and is ignored with a warning (`SOHAMALLOC_VERBOSE=1`); the secure tier aborts on it. If another solo has been mapped at the same address meanwhile, the second free unmaps that one.
 - **A narrow notify race.** A freer that passes the owner check, then stalls while the page is detached, claimed and exhausted by another heap, can leave the page's `nstate` set on the old (live) heap's stack. The new owner is not notified until the old heap drains it or the page is freed locally.
 - **The fast paths are longer than mimalloc's**: about 45 instructions for malloc and 79 for free (callgrind, glibc-simple), against about 18 and 29. The difference is the security and safety work:
   - link encoding with an exact block check;
@@ -271,7 +281,7 @@ A handler therefore never waits for a lock that its own interrupted thread holds
    - a mapping of its own needs the solo table's lock, taken by trylock, and a successful `mmap`.
 
    A handler must check for NULL, as with any allocator.
-2. **Deferred frees.** Frees of runs and solos (192 KiB and above) made in a handler that interrupted the allocator are deferred to the thread's next allocator call, or its exit. The memory is not reusable until then.
+2. **Deferred frees.** A free of a run or solo (192 KiB and above, plus handler mappings of any size) made in a handler that interrupted the allocator is done at once when its lock can be taken by trylock. Otherwise it is done when the interrupted call finishes (§5.4). A pointer whose solo lookup must wait is kept in a 64-entry side table; when that is full the pointer is leaked, with a warning under `SOHAMALLOC_VERBOSE=1`.
 3. **Large blocks in handler context:**
    - `realloc` of a solo (32 MiB and above) returns NULL with ENOMEM when the solo table's lock is held;
    - `malloc_usable_size` of a solo returns 0 in that case;

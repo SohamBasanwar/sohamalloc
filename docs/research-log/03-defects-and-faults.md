@@ -2,7 +2,7 @@
 
 This ledger records every defect found in sohamalloc: when and how it was found, its root cause, the fix, and the regression test that guards it, with before/after evidence. Times are UTC.
 
-**Scope of this version.** It covers the defects of review rounds 2 and 3 (2026-10-21) in full.
+**Scope of this version.** It covers the defects of review rounds 2, 3 and 4 (2026-10-21 to 2026-10-23) in full.
 
 - **Earlier defects** (2026-10-19/20) are listed with their discovery and fix in `01-timeline.md` (§ defect table) and in the commit messages of `71f852c` and `ee1f70d`. They are still to be transcribed into the format used here.
 - **Design-stage faults** (the 101-fault critique of v1 and the red-team rounds of the plan) are in `docs/research/00-v1-critique.md` and `docs/SOHAMALLOC_PLAN.md`.
@@ -116,3 +116,33 @@ The reviewers' reproducer crashed 3/3 under load and 0/3 on the idle machine. Th
 |---|---|---|
 | `signal_large_fallback`, 3 runs | FAIL 3/3: 18,796–19,069 NULL of 41,456–41,740 handler calls | PASS 3/3 release and 3/3 debug: 0 NULL |
 | sigstorm `--handler=large`, 5 s, 1/2/4 threads | 95 / 143 / 115 NULL | 0 / 0 / 0 |
+
+## Review round 4 (2026-10-22/23)
+
+**Method.** Commit `ae95875` was reviewed: the round-3 fixes plus C1-1. The review ran as workflow `wf_75415e22-635` with five lens reviewers at reasoning effort "high": signal reentrancy, concurrency, lifecycle/fork/init, API and memory return, portability and checks.
+
+- Each finding got one combined refuter, plus a second independent one for critical or major findings.
+- 12 of the 38 agents failed at the usage limit, so some findings were never verified by a refuter. They are marked as such below.
+- Raw results stay out of git (`data/review4/`).
+- Result: 24 findings, 15 confirmed, 7 of them critical or major.
+
+Every fix below has a regression test that fails on `ae95875` and passes after the fix, except where the table says otherwise.
+
+| ID | Severity | Reviewer finding(s) | Symptom | Root cause | Fix | Regression test |
+|---|---|---|---|---|---|---|
+| R4-1 | critical | lifecycle-1 | A child forked while another thread was inside lazy init could never finish init: its first allocation waited forever | Init marked itself running at its start and registered the fork handlers at its end. A child forked in between inherited "running" with no thread to finish | The fork handlers are registered at load (ELF constructor), and `fork_prepare` waits for an init in progress. Init is owned by a process id, so a child that still inherits an unfinished init takes it over; its steps are rerunnable. A first version skipped locking when `fork_prepare` saw init not yet started. The test then failed on the fixed code (1 of 40 trials hung): another thread finished init and took a lock just before the fork. Corrected before commit: `fork_prepare` initialises the allocator itself if needed and always takes every lock. Afterwards 0 hangs in 1000 trials, 800 of them under CPU load | `tests/regress/fork_during_init.c` (prefixed suite) |
+| R4-2 | critical | portability-1 | A double free whose two frees landed on the two different free lists of a page whose owner had exited was not detected. The page could be released by count while a block was still in use | Release and claim decisions for such pages relied on block counts and on the chain's own length; nothing compared the local list with the remote chain | Before such a page is released or claimed, `free_lists_unique` marks every block of both lists in a bitmap and aborts on a repeat. An owner's collect runs the same check when every block looks free | new cases in `tests/regress/invalid_frees.c` |
+| R4-3 | major | signal-1, lifecycle-3, signal-2, concurrency-2 (the last unverified) | Runs and solos freed by a signal handler that interrupted the allocator stayed in use without bound when the thread only took fast paths or only freed; those freed during thread exit leaked | Every such free was put on the thread's deferred list, which only the allocation slow paths, `soham_collect` and the start of thread exit drained | In handler context, runs and solos are freed at once when their lock can be taken by trylock. Anything deferred is drained at the end of the slow paths and of thread exit. Pointers whose solo lookup must wait go into a side table instead of being written into | `tests/regress/signal_deferred_free.c` |
+| R4-4 | major | lifecycle-2 | Allocations in atfork handlers registered before sohamalloc's first use failed: small ones used up the static arena, larger ones returned NULL at once | Those handlers run inside the fork window while `fork_prepare` holds every lock, and were served like signal handlers | The forking thread is marked as holding every lock (`t_fork_owner`): its blocking locks are no-ops in the window and it allocates normally. Trylocks are unchanged | `tests/regress/fork_atfork_alloc.c` |
+| R4-5 | major | lifecycle-4 | A module that embeds the prefixed archive crashed the next exiting thread after `dlclose()` | The pthread key's destructor stayed registered after the module was unmapped | An ELF destructor deletes the key (`soham_os_thread_key_fini`) | `tests/regress/dlclose_unload.c` (prefixed suite, new plugin test kind) |
+| R4-6 | major (claimed; refuters failed at the usage limit) | concurrency-1 | A pending-page handoff could be lost to store-buffering, stranding an orphan page | The pending push and the drain formed a store-buffering pattern with release/acquire only | seq_cst fences on both sides, as in the notify protocol | none deterministic: a memory-ordering window. Fixed by the pattern argument |
+| R4-7 | minor | signal-3, concurrency-3, api-5 | The shared-heap trim flag could be cleared just after a notification set it | Check-then-clear without the lock | Clear, fence, then look at the notify stack again (seq_cst push and flag) | — (a race window; `signal_shared_release` still passes) |
+| R4-8 | minor | portability-2 | A double free into a spare page was accepted silently | A spare keeps its geometry, and its owner word did not stop frees | A free into a page whose owner is `OWNER_SPARE` aborts | — |
+| R4-9 | minor | portability-4, api-4 (unverified) | `realloc` kept a block without the boundary checks `free` applies | The keep-in-place path checked only the kind | Alignment, run base and exact block boundary are checked before keeping | — |
+| R4-10 | minor | portability-5 | A handler-context free of a foreign pointer wrote into that memory | Every non-window pointer went onto the deferred list, which links through the block | Solo lookup by trylock first; a foreign pointer is leaked untouched (S1 aborts); an undecided one goes into the side table | — |
+| R4-11 | minor | lifecycle-6, concurrency-4 (unverified) | Data races: configuration and geometry read before init completed (`g_cfg.verbose`, `g_geo.secure`, `g_geo.B`), and `g_solo_n` read without its lock | Reads not ordered after the init publication | Reads gated on the init state (acquire); the solo count read under its lock | — |
+| R4-12 | minor (unverified) | api-1 | `malloc_trim` released at most 16,384 ranges per call | `ph_purge` capped every mode at 256 rounds | The cap no longer applies to `PURGE_ALL` | — |
+| R4-13 | minor | signal-4, api-3 (unverified) | Documentation: §10 after C1-1; 8× instead of 32× for hugeblock-aligned small requests | — | Corrected | — |
+| R4-14 | minor | lifecycle-5 | A fork child keeps pages whose responsible resolver was a thread of the parent: PENDING with nobody responsible | The resolver thread does not exist in the child | Documented (IMPLEMENTATION_NOTES §7); not fixed | — |
+| R4-15 | minor | portability-3 | A repeated free of a solo in the default tier is ignored | A solo that is not in the table is treated like a foreign pointer | Documented (README, IMPLEMENTATION_NOTES §9) | — |
+| R4-16 | minor (unverified) | api-2 | Slice records of released memory are resident but not counted in the statistics | — | Documented (IMPLEMENTATION_NOTES §9) | — |

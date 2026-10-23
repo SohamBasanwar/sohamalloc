@@ -96,6 +96,8 @@ SOHAM_HIDDEN void soham_os_wait(_Atomic uint32_t *addr, uint32_t val);
 /* Wake one waiter blocked on addr. */
 SOHAM_HIDDEN void soham_os_wake(_Atomic uint32_t *addr);
 SOHAM_HIDDEN void soham_os_yield(void);
+/* The process id (a fork child has its own). */
+SOHAM_HIDDEN int soham_os_getpid(void);
 
 /* --- Threads and processes --------------------------------------------- */
 
@@ -103,6 +105,9 @@ SOHAM_HIDDEN void soham_os_yield(void);
  * thread that called soham_os_thread_set(non-NULL).  0 on success. */
 SOHAM_HIDDEN int soham_os_thread_key_init(void (*dtor)(void *));
 SOHAM_HIDDEN void soham_os_thread_set(void *value);
+/* Delete the key (library unload): the destructor is not called again,
+ * so no exiting thread calls into unmapped code. */
+SOHAM_HIDDEN void soham_os_thread_key_fini(void);
 /* Register fork handlers (no-op where fork does not exist).  0 on success. */
 SOHAM_HIDDEN int soham_os_atfork(void (*prepare)(void), void (*parent)(void), void (*child)(void));
 

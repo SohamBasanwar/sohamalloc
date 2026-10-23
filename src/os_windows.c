@@ -161,6 +161,8 @@ void soham_os_wait(_Atomic uint32_t *addr, uint32_t val) {
 
 void soham_os_wake(_Atomic uint32_t *addr) { (void)addr; }
 
+int soham_os_getpid(void) { return (int)GetCurrentProcessId(); }
+
 void soham_os_yield(void) {
   OS_SAVE;
   SwitchToThread();
@@ -185,6 +187,14 @@ int soham_os_thread_key_init(void (*dtor)(void *)) {
 void soham_os_thread_set(void *value) {
   OS_SAVE;
   if (os_fls_index != FLS_OUT_OF_INDEXES) FlsSetValue(os_fls_index, value);
+  OS_RESTORE;
+}
+
+void soham_os_thread_key_fini(void) {
+  OS_SAVE;
+  /* FlsFree runs the callback for every value still set: make it a no-op. */
+  os_thread_dtor = NULL;
+  if (os_fls_index != FLS_OUT_OF_INDEXES) { FlsFree(os_fls_index); os_fls_index = FLS_OUT_OF_INDEXES; }
   OS_RESTORE;
 }
 

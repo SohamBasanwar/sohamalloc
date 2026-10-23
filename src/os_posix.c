@@ -394,6 +394,8 @@ void soham_os_wake(_Atomic uint32_t *addr) {
 #endif
 }
 
+int soham_os_getpid(void) { return (int)getpid(); }
+
 void soham_os_yield(void) {
   int e = errno;
   sched_yield();
@@ -405,12 +407,20 @@ void soham_os_yield(void) {
 /* ---------------------------------------------------------------------- */
 
 static pthread_key_t os_thread_key;
+static int os_thread_key_live;
 
 int soham_os_thread_key_init(void (*dtor)(void *)) {
   int e = errno;
   int r = pthread_key_create(&os_thread_key, dtor);
+  if (r == 0) os_thread_key_live = 1;
   errno = e;
   return r == 0 ? 0 : -1;
+}
+
+void soham_os_thread_key_fini(void) {
+  int e = errno;
+  if (os_thread_key_live) { os_thread_key_live = 0; pthread_key_delete(os_thread_key); }
+  errno = e;
 }
 
 void soham_os_thread_set(void *value) {
