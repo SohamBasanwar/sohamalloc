@@ -1,0 +1,1 @@
+{"allocs": "sohamalloc", "handlers": ["nosignal", "none", "malloc", "free", "realloc", "calloc", "large", "churn", "aligned"], "trials": 30, "seconds": 5, "threads": [1, 2, 4], "interval_us": 20, "stall_ms": 2000}

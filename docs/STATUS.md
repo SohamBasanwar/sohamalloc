@@ -1,6 +1,6 @@
 # sohamalloc: project status
 
-Last updated: 2026-10-29, branch `sohamalloc-dev`.
+Last updated: 2026-11-04, branch `sohamalloc-dev`.
 
 ## Where things stand
 
@@ -70,22 +70,18 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
   - mingw 9/9 + 2 skipped;
   - sigstorm 66/66.
 
-**Gate 2 still needs a clean round. Review round 5 of `d2add24`** was stopped on 2026-10-23 at 97% weekly usage before any reviewer finished. **It was relaunched on 2026-10-29 as workflow run `wf_f620b4ba-75e`**, with the same script and design.
+**Gate 2 still needs a clean round. Review round 5 of `d2add24`** has not completed. It stopped on 2026-10-23 at 97% weekly usage before any reviewer finished. The relaunch on 2026-10-29 (workflow run `wf_f620b4ba-75e`) failed at the session limit with no reviewer finished. Relaunch it in a session with enough usage left.
 
-**Running alongside:** the sohamalloc rerun of campaign 1 on `d2add24`. It covers all 9 handler kinds × 1, 2 and 4 threads × 30 trials (810 trials) with the frozen library `bench/out/sigstorm-c1-soham-d2add24/libsohamalloc-d2add24.so` (sha256 `8da10337…`). Log: `bench/out/sigstorm-c1-soham-d2add24.log`.
+- **Frozen libraries:** `bench/out/review5-libs-d2add24/`. sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
+- **Script:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round5.js`. Before relaunching, copy the frozen libraries into the scratchpad's `review5/libs/`. Save finished findings into `docs/research-log/data/review5/` (git-excluded).
 
-- **If interrupted:** `SOHAM_LIB=$PWD/bench/out/sigstorm-c1-soham-d2add24/libsohamalloc-d2add24.so python3 tools/sigstorm/run.py --resume bench/out/sigstorm-c1-soham-d2add24 --jobs 4`
+**sohamalloc rerun of campaign 1 on `d2add24`: finished 2026-11-04** and archived in `docs/research-log/data/sigstorm-c1-soham-d2add24/`.
 
-- **Frozen libraries:** `<session scratchpad>/review5/libs/`, with a copy in `bench/out/review5-libs-d2add24/`. sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
-- **Journal:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/subagents/workflows/wf_f620b4ba-75e/`.
-- **If interrupted:**
-  - **Same session:** `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round5.js", resumeFromRunId: "wf_f620b4ba-75e"})`.
-  - **New session:** relaunch that script after copying `bench/out/review5-libs-d2add24/*` into the scratchpad's `review5/libs/`. Save finished findings into `docs/research-log/data/review5/` (git-excluded).
+- 0 of 630 signal trials failed, 95% CI [0, 0.006]; 0 of 180 controls failed.
+- 140 million handler calls, 2.7 million of them inside an allocator call.
+- Handler NULL results: `large` 31 of 19.9 million (13,838 on `c1a9791`), `churn` 2, every other kind 0.
 
-**sigstorm, `aligned` handler kind for the other eight allocators** (720 trials; started 23:3x UTC). It complements campaign 1, whose controls stand for the same allocator builds on this machine.
-
-- Output: `bench/out/sigstorm-aligned-others/`. Log: `bench/out/sigstorm-aligned-others.log`.
-- **If interrupted:** `python3 tools/sigstorm/run.py --resume bench/out/sigstorm-aligned-others --jobs 4`
+**sigstorm, `aligned` handler kind for the other eight allocators** (720 trials): finished and archived in `docs/research-log/data/sigstorm-aligned-others/` (`bc13653`). Failed trials of 90: glibc, jemalloc, tcmalloc, tbbmalloc and hardened_malloc 90 each, mimalloc 85, snmalloc 76, scudo 39.
 
 **Done since the last checkpoint:**
 
@@ -106,10 +102,7 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 ## Next
 
 1. **Review round 5** on the round-4-fix commit; repeat rounds until none confirms a critical or major finding (gate 2). Fix what it confirms, run `tools/verify-matrix.sh`, and review again; repeat until a round confirms no critical or major finding (gate 2).
-2. **Campaign.**
-   - Rerun sohamalloc's rows of campaign 1 on the final code: all 9 handler kinds, including `aligned`.
-   - Run the `aligned` kind for the other eight allocators.
-   - Copy the data to `docs/research-log/data/`.
+2. **Campaign.** Done on `d2add24`: the sohamalloc rerun with all 9 handler kinds and the `aligned` kind for the other eight allocators are archived. Rerun sohamalloc's rows if review round 5 changes allocator code.
 3. **Busy-byte cost** measurement, then the tuned benchmark campaign: ≥10 repetitions with confidence intervals, on a quiet machine with `sudo tools/bench-host.sh tune`.
 4. **Research log.** Complete `02-experiments`, `04-design-decisions` and `06-paper-assessment`, and extend `01-timeline` past 2026-10-19.
 5. **Paper and presentation** only after the four gates hold.
