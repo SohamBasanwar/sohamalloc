@@ -1,6 +1,6 @@
 # sohamalloc: project status
 
-Last updated: 2026-11-04, branch `sohamalloc-dev`.
+Last updated: 2026-11-05, branch `sohamalloc-dev`.
 
 ## Where things stand
 
@@ -70,10 +70,13 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
   - mingw 9/9 + 2 skipped;
   - sigstorm 66/66.
 
-**Gate 2 still needs a clean round. Review round 5 of `d2add24`** has not completed. It stopped on 2026-10-23 at 97% weekly usage before any reviewer finished. The relaunch on 2026-10-29 (workflow run `wf_f620b4ba-75e`) failed at the session limit with no reviewer finished. Relaunch it in a session with enough usage left.
+**Gate 2 still needs a clean round. Review round 5 of `d2add24` is running** (relaunched 2026-11-05 as workflow run `wf_83122eaa-91b`). Two earlier attempts (2026-10-23 and 2026-10-29) stopped at usage limits before any reviewer finished.
 
-- **Frozen libraries:** `bench/out/review5-libs-d2add24/`. sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
-- **Script:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round5.js`. Before relaunching, copy the frozen libraries into the scratchpad's `review5/libs/`. Save finished findings into `docs/research-log/data/review5/` (git-excluded).
+- **Design:** seven lens reviewers at effort xhigh (signal reentrancy, concurrency, lifecycle/fork/init, API and memory return, portability and failure paths, hardening checks, page heap and release). Each finding gets a combined refuter, a second independent refuter when it is claimed or judged critical/major, and a tie-breaker on a split. If nothing blocking is confirmed, a completeness critic names up to four gap areas for gap reviewers.
+- **Frozen libraries:** `bench/out/review5-libs-d2add24/`, copied to the session scratchpad's `review5/libs/`. sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
+- **Script:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round5.js`. Journal: `.../subagents/workflows/wf_83122eaa-91b/`.
+- **If interrupted (same session):** `Workflow({scriptPath: "<script>", resumeFromRunId: "wf_83122eaa-91b"})`; finished agents return their cached results.
+- **New session:** copy `bench/out/review5-libs-d2add24/*` into the new scratchpad's `review5/libs/`, set `SCR` in the script to it, and relaunch. Save the findings into `docs/research-log/data/review5/` (git-excluded).
 
 **sohamalloc rerun of campaign 1 on `d2add24`: finished 2026-11-04** and archived in `docs/research-log/data/sigstorm-c1-soham-d2add24/`.
 
