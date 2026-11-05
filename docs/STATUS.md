@@ -70,7 +70,7 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
   - mingw 9/9 + 2 skipped;
   - sigstorm 66/66.
 
-**Gate 2 still needs a clean round. Review round 5 of `d2add24` is running** (relaunched 2026-11-05 as workflow run `wf_83122eaa-91b`). Two earlier attempts (2026-10-23 and 2026-10-29) stopped at usage limits before any reviewer finished.
+**Gate 2 still needs a clean round. Review round 5 of `d2add24` was stopped at the author's request on 2026-11-05**, shortly after its relaunch as workflow run `wf_83122eaa-91b`, before any reviewer finished. Two earlier attempts (2026-10-23 and 2026-10-29) stopped at usage limits before any reviewer finished.
 
 - **Design:** seven lens reviewers at effort xhigh (signal reentrancy, concurrency, lifecycle/fork/init, API and memory return, portability and failure paths, hardening checks, page heap and release). Each finding gets a combined refuter, a second independent refuter when it is claimed or judged critical/major, and a tie-breaker on a split. If nothing blocking is confirmed, a completeness critic names up to four gap areas for gap reviewers.
 - **Frozen libraries:** `bench/out/review5-libs-d2add24/`, copied to the session scratchpad's `review5/libs/`. sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
