@@ -16,8 +16,10 @@ import csv
 import datetime as dt
 import glob
 import hashlib
+import json
 import os
 import platform
+import random
 import re
 import shutil
 import signal
@@ -63,6 +65,8 @@ ALLOCATORS = {
 
 CSV_FIELDS = ["stamp", "rep", "bench", "alloc", "status", "time_s", "wall_s",
               "rss_kb", "user_s", "sys_s", "metric", "detail"]
+# Written after the fields above by this version of the runner; older result files lack them.
+EXTRA_FIELDS = ["seq", "start_ts", "load1", "env_pad"]
 
 
 # ------------------------------------------------------------------ metrics
@@ -155,6 +159,69 @@ def bench_table(P, python):
 
 
 # ------------------------------------------------------------------ running
+def pin_prefix(cpus):
+    return ["taskset", "-c", cpus] if cpus else []
+
+
+def parse_cpu_list(text):
+    out = []
+    for part in text.replace(" ", "").split(","):
+        if "-" in part:
+            lo, hi = part.split("-", 1)
+            out.extend(range(int(lo), int(hi) + 1))
+        elif part:
+            out.append(int(part))
+    return out
+
+
+def _rd(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def siblings(cpu):
+    """The hardware threads that share a core with cpu (including cpu)."""
+    return parse_cpu_list(_rd("/sys/devices/system/cpu/cpu%d/topology/thread_siblings_list" % cpu)) or [cpu]
+
+
+def auto_cpus():
+    """One hardware thread per performance core on a hybrid CPU, else one per core."""
+    allowed = sorted(os.sched_getaffinity(0))
+    cand = [c for c in parse_cpu_list(_rd("/sys/devices/cpu_core/cpus")) if c in allowed] or allowed
+    seen, pick = set(), []
+    for c in cand:
+        if c not in seen:
+            pick.append(c)
+            seen.update(siblings(c))
+    return pick
+
+
+def host_state():
+    """The machine settings that decide whether timings repeat (set by tools/bench-host.sh)."""
+    cpu0 = "/sys/devices/system/cpu/cpu0/cpufreq/"
+    turbo = {"1": "off", "0": "on"}.get(_rd("/sys/devices/system/cpu/intel_pstate/no_turbo"), "n/a")
+    ac = ",".join(_rd(p) for p in glob.glob("/sys/class/power_supply/A*/online")) or "n/a"
+    return ["host state: governor %s, EPP %s, turbo %s, THP %s, AC online %s, load %s" % (
+        _rd(cpu0 + "scaling_governor") or "n/a", _rd(cpu0 + "energy_performance_preference") or "n/a", turbo,
+        _rd("/sys/kernel/mm/transparent_hugepage/enabled") or "n/a", ac,
+        " ".join("%.2f" % x for x in os.getloadavg()))]
+
+
+def host_problems(max_load):
+    out = []
+    gov = _rd("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+    if gov and gov != "performance":
+        out.append("the CPU governor is '%s', not 'performance' (sudo tools/bench-host.sh tune)" % gov)
+    if any(_rd(p) == "0" for p in glob.glob("/sys/class/power_supply/A*/online")):
+        out.append("the machine runs on battery")
+    if os.getloadavg()[0] > max_load:
+        out.append("the 1-minute load is %.2f, above %.2f" % (os.getloadavg()[0], max_load))
+    return out
+
+
 def base_env():
     env = dict(os.environ)
     for k in list(env):
@@ -198,11 +265,15 @@ def kill_group(p):
         pass
 
 
-def run_plain(b, argv, lib, logbase, tmp, timeout, stdin_override=None):
+def run_plain(b, argv, lib, logbase, tmp, timeout, stdin_override=None, pin=None, pad=0):
     tf = logbase + ".time"
     pre = ["env", "LD_PRELOAD=" + lib] if lib else ["env"]
     pre += ["%s=%s" % kv for kv in b.env.items()]
-    cmd = [TIME, "-f", "%e %M %U %S", "-o", tf] + pre + [a.replace("{tmp}", tmp) for a in argv]
+    if pad:
+        pre.append("SB_PAD=" + "x" * pad)
+    run = pre + [a.replace("{tmp}", tmp) for a in argv]
+    cmd = pin_prefix(pin) + [TIME, "-f", "%e %M %U %S", "-o", tf] + run
+    desc = " ".join(x for x in run[1:] if not x.startswith("SB_PAD="))
     stdin_name = stdin_override or b.stdin
     stdin = open(os.path.join(b.cwd, stdin_name)) if stdin_name else subprocess.DEVNULL
     with open(logbase + ".out", "wb") as fo, open(logbase + ".err", "wb") as fe:
@@ -218,32 +289,37 @@ def run_plain(b, argv, lib, logbase, tmp, timeout, stdin_override=None):
     if stdin_name:
         stdin.close()
     if timed_out:
-        return "timeout", None, " ".join(cmd[6:])
+        return "timeout", None, desc
     status, nums = parse_time_file(tf)
-    return status, nums, " ".join(cmd[6:])
+    return status, nums, desc
 
 
-def redis_run(b, lib, logbase, tmp, timeout, quick):
+def redis_run(b, lib, logbase, tmp, timeout, quick, pin=None, client_pin=None, pad=0):
     """redis-server under the allocator (measured), redis-benchmark as client (glibc)."""
     # sun_path is limited to 108 bytes: use a short directory if needed.
     sockdir = tmp if len(tmp) < 80 else tempfile.mkdtemp(prefix="sbr-")
     try:
-        return _redis_run(os.path.join(sockdir, "redis.sock"), lib, logbase, tmp, timeout, quick)
+        return _redis_run(os.path.join(sockdir, "redis.sock"), lib, logbase, tmp, timeout, quick,
+                          pin, client_pin, pad)
     finally:
         if sockdir != tmp:
             shutil.rmtree(sockdir, ignore_errors=True)
 
 
-def _redis_run(sock, lib, logbase, tmp, timeout, quick):
+def _redis_run(sock, lib, logbase, tmp, timeout, quick, pin=None, client_pin=None, pad=0):
     tf = logbase + ".time"
     pre = ["env", "LD_PRELOAD=" + lib] if lib else ["env"]
+    if pad:
+        pre.append("SB_PAD=" + "x" * pad)
     n = "30000" if quick else "100000"
-    server = [TIME, "-f", "%e %M %U %S", "-o", tf] + pre + [
+    srv_run = pre + [
         "redis-server", "--port", "0", "--unixsocket", sock, "--save", "", "--appendonly", "no",
         "--daemonize", "no", "--dir", tmp, "--logfile", os.path.join(tmp, "redis.log")]
-    client = ["redis-benchmark", "-s", sock, "-n", n, "-P", "16", "-r", "100000", "-d", "64",
-              "-q", "--csv", "-t", "set,get,lpush,lpop,sadd,hset,zadd,lrange_100"]
-    desc = " ".join(server[6:]) + " ; " + " ".join(client)
+    server = pin_prefix(pin) + [TIME, "-f", "%e %M %U %S", "-o", tf] + srv_run
+    client = pin_prefix(client_pin) + [
+        "redis-benchmark", "-s", sock, "-n", n, "-P", "16", "-r", "100000", "-d", "64",
+        "-q", "--csv", "-t", "set,get,lpush,lpop,sadd,hset,zadd,lrange_100"]
+    desc = " ".join(x for x in srv_run[1:] if not x.startswith("SB_PAD=")) + " ; " + " ".join(client)
     with open(logbase + ".err", "wb") as fe:
         srv = subprocess.Popen(server, cwd=tmp, stdin=subprocess.DEVNULL, stdout=fe, stderr=fe,
                                env=base_env(), start_new_session=True)
@@ -331,7 +407,38 @@ def main():
     ap.add_argument("--out", default=os.path.join(BENCH, "out"), help="output directory")
     ap.add_argument("--list", action="store_true", help="list benchmarks and exit")
     ap.add_argument("--keep-logs", action="store_true", help="keep stdout/stderr of successful runs")
+    ap.add_argument("--cpus", default="", help="pin the measured processes: a CPU list for taskset, or "
+                    "'auto' (one hardware thread per performance core)")
+    ap.add_argument("--seed", type=int, default=None, help="shuffle the benchmark order of every "
+                    "repetition with this seed (the allocator order still rotates)")
+    ap.add_argument("--env-pad", action="store_true", help="add 0-4095 random bytes of environment to "
+                    "every run, which averages out stack-alignment bias")
+    ap.add_argument("--strict-host", action="store_true", help="refuse to start unless the governor is "
+                    "'performance', the machine is on AC power and the load is below --max-load")
+    ap.add_argument("--max-load", type=float, default=1.5, help="1-minute load limit for --strict-host")
+    ap.add_argument("--resume", default="", metavar="CSV", help="continue the campaign that wrote this "
+                    "results file (its options are reused; --reps may raise the repetition count)")
     a = ap.parse_args()
+
+    resume = None
+    if a.resume:
+        m = re.search(r"results-(\d{8}-\d{6})\.csv$", a.resume)
+        rdir = os.path.join(os.path.dirname(os.path.abspath(a.resume)), "run-" + (m.group(1) if m else "?"))
+        try:
+            with open(os.path.join(rdir, "args.json")) as f:
+                saved = json.load(f)
+            with open(a.resume, newline="") as f:
+                old_rows = list(csv.DictReader(f))
+        except (OSError, ValueError) as e:
+            print("cannot resume %s: %s (campaigns of an older runner have no args.json)" % (a.resume, e),
+                  file=sys.stderr)
+            return 2
+        resume = {"stamp": m.group(1), "saved": saved, "rows": old_rows}
+        for k in ("allocs", "quick", "only", "skip", "threads", "timeout", "cpus", "seed", "env_pad"):
+            setattr(a, k, saved[k])
+        if a.reps is None:
+            a.reps = saved["reps"]
+        a.out = os.path.dirname(os.path.abspath(a.resume))
 
     python = shutil.which("python3") or sys.executable
     benches = bench_table(a.threads, python)
@@ -366,30 +473,63 @@ def main():
         print("GNU time is required: apt-get install -y time", file=sys.stderr)
         return 2
 
-    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    pin = client_pin = None
+    if a.cpus:
+        allowed = sorted(os.sched_getaffinity(0))
+        pick = auto_cpus() if a.cpus == "auto" else parse_cpu_list(a.cpus)
+        if not pick or any(c not in allowed for c in pick):
+            print("--cpus %s: not a list of usable CPUs" % a.cpus, file=sys.stderr)
+            return 2
+        if shutil.which("taskset") is None:
+            print("--cpus needs taskset (util-linux)", file=sys.stderr)
+            return 2
+        pin = ",".join(str(c) for c in pick)
+        busy = set()
+        for c in pick:
+            busy.update(siblings(c))
+        client_pin = ",".join(str(c) for c in allowed if c not in busy) or None
+        if len(pick) < a.threads:
+            print("warning: %d threads on %d pinned CPUs" % (a.threads, len(pick)), file=sys.stderr)
+    problems = host_problems(a.max_load)
+    for p in problems:
+        print("host: " + p, file=sys.stderr)
+    if a.strict_host and problems:
+        print("--strict-host: not starting", file=sys.stderr)
+        return 2
+
+    stamp = resume["stamp"] if resume else dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     os.makedirs(a.out, exist_ok=True)
     rundir = os.path.join(a.out, "run-" + stamp)
     logdir = os.path.join(rundir, "logs")
-    os.makedirs(logdir)
+    os.makedirs(logdir, exist_ok=bool(resume))
 
     # Snapshot the allocator libraries: another engineer may rebuild
     # build/libsohamalloc.so while we run, which would mix versions.
-    libs, meta = {}, []
+    libs, meta, lib_sha = {}, [], {}
     for x in allocs:
         src = ALLOCATORS[x]
         if src is None:
             libs[x] = None
             meta.append("%s: system allocator (glibc %s)" % (x, platform.libc_ver()[1]))
             continue
-        if not os.path.isfile(src):
+        if not resume and not os.path.isfile(src):
             print("allocator %s missing: %s (run bench/build_bench.sh / build sohamalloc)" % (x, src),
                   file=sys.stderr)
             return 2
         dst = os.path.join(rundir, os.path.basename(src))
-        shutil.copy2(src, dst)
+        if not resume:
+            shutil.copy2(src, dst)
         libs[x] = dst
-        with open(dst, "rb") as f:
-            h = hashlib.sha256(f.read()).hexdigest()[:16]
+        try:
+            with open(dst, "rb") as f:
+                h = hashlib.sha256(f.read()).hexdigest()[:16]
+        except OSError:
+            print("cannot resume: the library snapshot %s is gone" % dst, file=sys.stderr)
+            return 2
+        if resume and resume["saved"]["libs"].get(x) != h:
+            print("cannot resume: %s is not the library the campaign started with" % dst, file=sys.stderr)
+            return 2
+        lib_sha[x] = h
         meta.append("%s: %s (sha256 %s, snapshot run-%s/%s)" % (x, src, h, stamp, os.path.basename(dst)))
 
     runnable, skipped = [], []
@@ -418,36 +558,74 @@ def main():
         "sohamalloc git: %s%s" % (git("rev-parse", "--short", "HEAD"),
                                   " (src/include modified in working tree)" if dirty else ""),
         "threads N = %d, reps = %d, quick = %s, timeout = %.0fs" % (a.threads, reps, a.quick, a.timeout),
-    ] + meta + ["tools: " + tool_versions(python)]
+        "pinning: " + (("measured processes on CPUs %s" % pin
+                        + ("; the redis client on %s" % client_pin if client_pin else "")) if pin else "none"),
+        "order: benchmarks %s; allocators rotate per repetition and benchmark; environment padding %s" % (
+            ("shuffled per repetition (seed %d)" % a.seed) if a.seed is not None else "in table order",
+            "0-4095 random bytes per run" if a.env_pad else "off"),
+    ] + host_state() + meta + ["tools: " + tool_versions(python)]
     if skipped:
         env_info.append("skipped: %s" % "; ".join("%s (%s)" % s for s in skipped))
-    with open(os.path.join(rundir, "env.txt"), "w") as f:
-        f.write("\n".join(env_info) + "\n")
+    with open(os.path.join(rundir, "env.txt"), "a" if resume else "w") as f:
+        if resume:
+            f.write("\nresumed: %s, %d rows already in the results file\n%s\n" % (
+                dt.datetime.now().isoformat(timespec="seconds"), len(resume["rows"]), "\n".join(host_state())))
+        else:
+            f.write("\n".join(env_info) + "\n")
+    with open(os.path.join(rundir, "args.json"), "w") as f:      # what --resume needs
+        json.dump({"allocs": a.allocs, "reps": reps, "quick": a.quick, "only": a.only, "skip": a.skip,
+                   "threads": a.threads, "timeout": a.timeout, "cpus": pin or "", "seed": a.seed,
+                   "env_pad": a.env_pad, "libs": lib_sha}, f, indent=1)
     for l in env_info:
         print(l)
 
     csv_path = os.path.join(a.out, "results-%s.csv" % stamp)
-    csvf = open(csv_path, "w", newline="")
-    cw = csv.writer(csvf)
-    cw.writerow(CSV_FIELDS)
-    csvf.flush()
     ref_digest = {}   # bench -> digest of the first successful glibc run (else first success)
-    total = reps * len(runnable) * len(allocs)
+    have = set()      # (rep, bench, alloc) already in the results file of a resumed campaign
+    if resume:
+        for r in resume["rows"]:
+            have.add((int(r["rep"]), r["bench"], r["alloc"]))
+            m = re.match(r"digest (\w+)$", r["detail"] or "")
+            if (r["status"] == "ok" and m and r["bench"] not in ref_digest
+                    and (r["alloc"] == "glibc" or "glibc" not in allocs)):
+                ref_digest[r["bench"]] = m.group(1)
+        csvf = open(csv_path, "a", newline="")
+        cw = csv.writer(csvf)
+    else:
+        csvf = open(csv_path, "w", newline="")
+        cw = csv.writer(csvf)
+        cw.writerow(CSV_FIELDS + EXTRA_FIELDS)
+        csvf.flush()
+    total = sum(1 for rep in range(1, reps + 1) for b in runnable for x in allocs if (rep, b.name, x) not in have)
+    seq = len(have)
     done, t_start = 0, time.time()
     for rep in range(1, reps + 1):
-        for bi, b in enumerate(runnable):
+        idxs = list(range(len(runnable)))
+        if a.seed is not None:
+            random.Random(a.seed * 1000003 + rep).shuffle(idxs)
+        for bi in idxs:
+            b = runnable[bi]
             k = (rep - 1 + bi) % len(allocs)
             order = allocs[k:] + allocs[:k]
             for x in order:
+                if (rep, b.name, x) in have:
+                    continue
+                seq += 1
+                # Independent padding per run: the LD_PRELOAD path already makes the environment
+                # size differ between allocators, which would otherwise be a fixed bias.
+                pad = random.Random(((a.seed or 0) * 1000003 + rep) * 100003 + bi * 101
+                                    + allocs.index(x)).randrange(4096) if a.env_pad else 0
+                start_ts, load1 = int(time.time()), os.getloadavg()[0]
                 logbase = os.path.join(logdir, "%s.%s.%d" % (b.name, x, rep))
                 tmp = tempfile.mkdtemp(prefix="sb-", dir=rundir)
                 argv = b.quick if (a.quick and b.quick) else b.argv
                 metric = None
                 if b.kind == "redis":
-                    status, nums, desc, metric = redis_run(b, libs[x], logbase, tmp, a.timeout, a.quick)
+                    status, nums, desc, metric = redis_run(b, libs[x], logbase, tmp, a.timeout, a.quick,
+                                                           pin, client_pin, pad)
                 else:
                     status, nums, desc = run_plain(b, argv, libs[x], logbase, tmp, a.timeout,
-                                                   b.quick_stdin if a.quick else None)
+                                                   b.quick_stdin if a.quick else None, pin, pad)
                     if status == "ok" and b.metric:
                         with open(logbase + ".out", errors="replace") as f:
                             metric = b.metric(f.read())
@@ -477,7 +655,7 @@ def main():
                     with open(logbase + ".err", errors="replace") as f:
                         err = f.read()[-1500:].replace("\n", " | ")
                     row[-1] = (detail + " " if detail else "") + "cmd: %s ; stderr: %s" % (desc, err)
-                cw.writerow(row)
+                cw.writerow(row + [str(seq), str(start_ts), "%.2f" % load1, str(pad)])
                 csvf.flush()
                 if status == "ok" and not a.keep_logs:
                     for ext in (".out", ".err", ".time"):

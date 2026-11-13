@@ -7,7 +7,8 @@ Per benchmark and allocator: median time and median peak RSS over the
 successful repetitions, each normalised to the best allocator on that
 benchmark (1.00 = best).  Per allocator: geometric means of the normalised
 time and RSS over the benchmarks where every allocator succeeded, and a
-combined score sqrt(geomean(time_norm * rss_norm)) (lower is better).
+combined score sqrt(geomean(time_norm * rss_norm)) (lower is better).  With six or more
+repetitions the report adds 95% confidence intervals (stats.py).
 """
 import csv
 import math
@@ -15,6 +16,8 @@ import os
 import statistics
 import sys
 from collections import OrderedDict, defaultdict
+
+import stats
 
 APPS = {"python", "python-malloc", "gxx", "sqlite", "redis"}
 TIE = 0.02   # head-to-head: differences under 2% count as a tie
@@ -35,7 +38,7 @@ def summarize(rows):
     benches = list(OrderedDict.fromkeys(r["bench"] for r in rows))
     seen = list(OrderedDict.fromkeys(r["alloc"] for r in rows))
     allocs = [a for a in ORDER if a in seen] + [a for a in seen if a not in ORDER]
-    cell = defaultdict(lambda: {"t": [], "r": [], "fail": [], "n": 0, "metric": "wall"})
+    cell = defaultdict(lambda: {"t": [], "r": [], "fail": [], "n": 0, "metric": "wall", "byrep": {}})
     for r in rows:
         c = cell[(r["bench"], r["alloc"])]
         c["n"] += 1
@@ -44,6 +47,7 @@ def summarize(rows):
             c["t"].append(float(r["time_s"]))
             if r["rss_kb"]:
                 c["r"].append(float(r["rss_kb"]))
+            c["byrep"][int(r["rep"])] = (float(r["time_s"]), float(r["rss_kb"]) if r["rss_kb"] else None)
         else:
             c["fail"].append(r)
     med = {}
@@ -165,6 +169,8 @@ def build_report(csv_path, env_info=None):
     w("")
     ranked = sorted(allocs, key=lambda a: scores[a][2] if not math.isnan(scores[a][2]) else 1e9)
     w("Ranking by combined score: " + " < ".join("%s (%.3f)" % (a, scores[a][2]) for a in ranked) + "\n")
+
+    stats.ci_sections(w, rows, cell, med, common, allocs, scores)
 
     # ---- wins / losses
     w("## Wins and losses\n")

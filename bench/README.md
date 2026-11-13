@@ -34,8 +34,23 @@ Options for `run_bench.sh`:
 | `--threads N` | Thread count for the `*N` benchmarks. Default 4, the core count of the reference machine |
 | `--timeout S` | Per-run timeout in seconds. Default 180; a hang is recorded as `timeout` |
 | `--keep-logs` | Keep stdout and stderr of successful runs. Logs of failed runs are always kept |
+| `--cpus LIST` or `--cpus auto` | Pin the measured processes with `taskset`. `auto` takes one hardware thread per performance core; the redis client then runs on the remaining CPUs |
+| `--seed N` | Shuffle the benchmark order of every repetition (the allocator order still rotates) |
+| `--env-pad` | Add 0–4095 random bytes of environment to every run (see Methodology) |
+| `--strict-host` | Refuse to start unless the governor is `performance`, the machine is on AC power and the 1-minute load is below `--max-load` (default 1.5) |
+| `--resume CSV` | Continue the campaign that wrote this results file, with its saved options and library snapshots. `--reps N` may raise the repetition count |
 
 `SOHAM_LIB=/path/libsohamalloc.so` benchmarks a different sohamalloc build.
+
+**A campaign for publication** (gate 4: tuned machine, at least 10 repetitions, confidence intervals):
+
+```sh
+sudo tools/bench-host.sh tune          # performance governor, turbo off; undo with 'restore'
+bench/run_bench.sh --reps 10 --cpus auto --seed 1 --env-pad --strict-host
+bench/run_bench.sh --resume bench/out/results-<stamp>.csv     # if it was interrupted
+```
+
+Close other programs first. `env.txt` in the run directory records the governor, turbo, load, pinning, seed and library checksums, so the report can show the conditions it was measured under.
 
 ## What is measured
 
@@ -95,6 +110,13 @@ A failing run is excluded from the medians. It appears in the report's Failures 
   - Wins and losses count best and worst per benchmark. A result within 2% of the best counts as best.
   - A head-to-head table compares sohamalloc with each other allocator.
 - **Noise indicator.** The `spread` column is the largest (max − min) / median of the time over the repetitions among the allocators. Treat differences smaller than the spread as noise.
+- **Confidence intervals** (`lib/stats.py`, with six or more repetitions), all at 95%:
+  - A single median gets the distribution-free interval from order statistics: with 10 repetitions, the second-smallest to the second-largest value.
+  - Ratios between allocators, normalised factors, geometric means and the score get a block bootstrap over repetitions: each resample draws whole repetitions and recomputes everything, so whatever a repetition has in common (machine state, time of day) stays paired across allocators.
+  - `python3 bench/lib/selftest_stats.py` measures the coverage on simulated campaigns with known true ratios: 96–98% over 1000 campaigns of 10 repetitions (2026-11-13), and 53–60% for a deliberately narrow control interval, which shows the test can fail. A widened ("expanded percentile") interval was tried first and rejected, because it covered 97–100%.
+  - The report also shows, per repetition, how its runs compare with the medians, and the mean load: a repetition that ran slow is visible there.
+- **Bias from the environment size.** The address of a program's stack depends on the size of its environment, which can shift timings by several percent (Mytkowicz et al., ASPLOS 2009). The `LD_PRELOAD` path makes that size differ between allocators, which would be a fixed bias. `--env-pad` gives every run its own random padding, so the effect averages out over repetitions and shows up in the intervals instead.
+- **Order.** `--seed` shuffles the benchmark order in each repetition, so no benchmark always runs after the same neighbour. The results file records each run's sequence number, start time, load and padding.
 
 ## Limitations (read before quoting numbers)
 
