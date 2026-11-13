@@ -1,6 +1,6 @@
 # sohamalloc: project status
 
-Last updated: 2026-11-05, branch `sohamalloc-dev`.
+Last updated: 2026-11-13, branch `sohamalloc-dev`.
 
 ## Where things stand
 
@@ -15,6 +15,15 @@ Last updated: 2026-11-05, branch `sohamalloc-dev`.
 | tcmalloc | 1.370 | 1.537 | 1.451 |
 
 That campaign measured commit `273bcb9` plus 64-byte hot-path alignment. No later code has been benchmarked: the tuned campaign on this laptop (gate 4) is still to run.
+
+**The harness is ready for that campaign** (`d9b37ae`, 2026-11-13): 95% confidence intervals in the report (checked by `bench/lib/selftest_stats.py`: 96–98% coverage on 1000 simulated campaigns), `--resume`, core pinning, shuffled order, environment padding, and the host state recorded per campaign. It needs the machine tuned, which takes `sudo`:
+
+```sh
+sudo tools/bench-host.sh tune
+bench/run_bench.sh --reps 10 --cpus auto --seed 1 --env-pad --strict-host
+```
+
+The statistics code has a self-test but has not had an independent review yet; do that before quoting its intervals in a paper.
 
 **Tests** on the commit with the review-round-3 fixes (record: `docs/research-log/data/verify/2026-10-21-review3-fixes-matrix.txt`):
 
@@ -70,13 +79,25 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
   - mingw 9/9 + 2 skipped;
   - sigstorm 66/66.
 
-**Gate 2 still needs a clean round. Review round 5 of `d2add24` was stopped at the author's request on 2026-11-05**, shortly after its relaunch as workflow run `wf_83122eaa-91b`, before any reviewer finished. Two earlier attempts (2026-10-23 and 2026-10-29) stopped at usage limits before any reviewer finished.
+**Gate 2 still needs a clean round. Review round 5 of `d2add24` now runs in waves** (plan of 2026-11-13). Three earlier attempts (2026-10-23, 2026-10-29, 2026-11-05) launched every reviewer at once and were cut off by usage limits or stopped with nothing finished.
 
-- **Design:** seven lens reviewers at effort xhigh (signal reentrancy, concurrency, lifecycle/fork/init, API and memory return, portability and failure paths, hardening checks, page heap and release). Each finding gets a combined refuter, a second independent refuter when it is claimed or judged critical/major, and a tie-breaker on a split. If nothing blocking is confirmed, a completeness critic names up to four gap areas for gap reviewers.
-- **Frozen libraries:** `bench/out/review5-libs-d2add24/`, copied to the session scratchpad's `review5/libs/`. sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
-- **Script:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round5.js`. Journal: `.../subagents/workflows/wf_83122eaa-91b/`.
-- **If interrupted (same session):** `Workflow({scriptPath: "<script>", resumeFromRunId: "wf_83122eaa-91b"})`; finished agents return their cached results.
-- **New session:** copy `bench/out/review5-libs-d2add24/*` into the new scratchpad's `review5/libs/`, set `SCR` in the script to it, and relaunch. Save the findings into `docs/research-log/data/review5/` (git-excluded).
+- **Why waves.** Measured on 2026-11-13: an agent in this setup starts with about 60,000 tokens of fixed context and re-reads it on every turn, and 27 small test agents used up a whole usage window. Seven deep reviewers plus their refuters cannot fit in one window.
+- **Design.** Seven lenses, two per wave, each wave a workflow of its own: reviewers at effort high; one refuter per finding at medium; a second, independent refuter at high for a finding claimed or judged critical or major; a tie-breaker at xhigh when those two disagree. Reviewers keep a `NOTES.md` in their scratch directory. After the last wave, and only if nothing blocking was confirmed, a completeness critic names gap areas.
+
+  | Wave | Lenses | Status |
+  |---|---|---|
+  | 1 (pilot) | signal-reentrancy | running since 2026-11-13, workflow run `wf_14912398-7ae` (resume with `resumeFromRunId: "wf_14912398-7ae"` and `args: {lenses: ["signal-reentrancy"]}`) |
+  | 2 | concurrency, lifecycle-fork-init | not started |
+  | 3 | api-and-memory, portability-and-failure-paths | not started |
+  | 4 | hardening-checks, page-heap-and-release | not started |
+  | 5 | completeness critic and gap reviewers | not started |
+
+  Wave 1 is a single reviewer on purpose: its token cost, read from the workflow result, decides how many reviewers fit in one usage window.
+
+- **Script:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round5.js`, launched as `Workflow({scriptPath: "<script>", args: {lenses: ["<lens>", "<lens>"]}})`. A copy of the script is kept in `docs/research-log/data/review5/` (git-excluded).
+- **Frozen libraries:** `bench/out/review5-libs-d2add24/` (the script reads them there). sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
+- **Results:** saved per wave into `docs/research-log/data/review5/wave<N>.json` as soon as a wave finishes.
+- **If a wave is interrupted (same session):** relaunch with the same `args` and `resumeFromRunId: "<run id of that wave>"`; finished agents replay from the journal. **New session:** set `SCR` in the script to the new scratchpad and launch the wave again; reviewers' notes of the old run, if the scratch directory survived, are under `<old scratchpad>/review5/<lens>/NOTES.md`.
 
 **sohamalloc rerun of campaign 1 on `d2add24`: finished 2026-11-04** and archived in `docs/research-log/data/sigstorm-c1-soham-d2add24/`.
 
