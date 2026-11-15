@@ -86,7 +86,7 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 
   | Wave | Lenses | Status |
   |---|---|---|
-  | 1 (pilot) | signal-reentrancy | running since 2026-11-15, workflow run `wf_2dbcefe8-aef`. A first attempt on 2026-11-13 (`wf_14912398-7ae`) was cut off after 10 minutes: that usage window was nearly spent already |
+  | 1 (pilot) | signal-reentrancy | running since 2026-11-15, third launch, workflow run `wf_1cc28c75-b3f`; it continues from `bench/out/review5-work/signal-reentrancy/NOTES.md`. Two earlier launches (`wf_14912398-7ae`, `wf_2dbcefe8-aef`) were cut off by the session limit after 10 and 20 minutes |
   | 2 | concurrency, lifecycle-fork-init | not started |
   | 3 | api-and-memory, portability-and-failure-paths | not started |
   | 4 | hardening-checks, page-heap-and-release | not started |
@@ -97,6 +97,11 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 - **Script:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round5.js`, launched as `Workflow({scriptPath: "<script>", args: {lenses: ["<lens>", "<lens>"]}})`. A copy of the script is kept in `docs/research-log/data/review5/` (git-excluded).
 - **Frozen libraries:** `bench/out/review5-libs-d2add24/` (the script reads them there). sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
 - **Results:** saved per wave into `docs/research-log/data/review5/wave<N>.json` as soon as a wave finishes.
+- **Interim findings of wave 1, from the reviewer's notes; not yet checked by a refuter:**
+  - S1, reproduced by the reviewer: when a process's first use of the allocator is `fork()`, `fork_prepare` runs the lazy init without the busy byte set. A signal handler on that thread that allocates inside two windows of a few instructions each then waits forever.
+  - S2, being reproduced when the run was cut off: a run freed by a handler that interrupted a fast-path free is deferred and not drained when that fast path returns, so a thread that only frees keeps it (the R4-3 fix may be incomplete).
+  - S5, minor: the pending drain runs in refills and `soham_collect`, not in "the next slow path of any thread" as the notes say.
+- **Why the first launches died (measured 2026-11-15):** the main session's conversation had grown to about 624,000 tokens, re-read at every step. That day its ten steps used 1.24 million fresh input tokens and 4.3 million cached ones, against the reviewer's 0.43 and 2.8 million. Compact the main session (`/compact`) or start a new one from this file before continuing; the review itself is not the main cost.
 - **Working folders:** `bench/out/review5-work/<lens>/` (git-ignored, survives a reboot). Each reviewer keeps a `NOTES.md` there and continues from it when its wave is launched again.
 - **If a wave is interrupted:** launch it again with the same `args`. In the same session add `resumeFromRunId: "<run id of that wave>"`, and finished agents replay from the journal; in a new session the reviewers pick up their `NOTES.md`.
 
