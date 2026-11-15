@@ -1,6 +1,6 @@
 # sohamalloc: project status
 
-Last updated: 2026-11-13, branch `sohamalloc-dev`.
+Last updated: 2026-11-15, branch `sohamalloc-dev`.
 
 ## Where things stand
 
@@ -86,7 +86,7 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 
   | Wave | Lenses | Status |
   |---|---|---|
-  | 1 (pilot) | signal-reentrancy | running since 2026-11-13, workflow run `wf_14912398-7ae` (resume with `resumeFromRunId: "wf_14912398-7ae"` and `args: {lenses: ["signal-reentrancy"]}`) |
+  | 1 (pilot) | signal-reentrancy | running since 2026-11-15, workflow run `wf_2dbcefe8-aef`. A first attempt on 2026-11-13 (`wf_14912398-7ae`) was cut off after 10 minutes: that usage window was nearly spent already |
   | 2 | concurrency, lifecycle-fork-init | not started |
   | 3 | api-and-memory, portability-and-failure-paths | not started |
   | 4 | hardening-checks, page-heap-and-release | not started |
@@ -97,7 +97,8 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 - **Script:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round5.js`, launched as `Workflow({scriptPath: "<script>", args: {lenses: ["<lens>", "<lens>"]}})`. A copy of the script is kept in `docs/research-log/data/review5/` (git-excluded).
 - **Frozen libraries:** `bench/out/review5-libs-d2add24/` (the script reads them there). sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
 - **Results:** saved per wave into `docs/research-log/data/review5/wave<N>.json` as soon as a wave finishes.
-- **If a wave is interrupted (same session):** relaunch with the same `args` and `resumeFromRunId: "<run id of that wave>"`; finished agents replay from the journal. **New session:** set `SCR` in the script to the new scratchpad and launch the wave again; reviewers' notes of the old run, if the scratch directory survived, are under `<old scratchpad>/review5/<lens>/NOTES.md`.
+- **Working folders:** `bench/out/review5-work/<lens>/` (git-ignored, survives a reboot). Each reviewer keeps a `NOTES.md` there and continues from it when its wave is launched again.
+- **If a wave is interrupted:** launch it again with the same `args`. In the same session add `resumeFromRunId: "<run id of that wave>"`, and finished agents replay from the journal; in a new session the reviewers pick up their `NOTES.md`.
 
 **sohamalloc rerun of campaign 1 on `d2add24`: finished 2026-11-04** and archived in `docs/research-log/data/sigstorm-c1-soham-d2add24/`.
 
