@@ -41,6 +41,16 @@ Other files in `docs/research-log/` cover the analysis.
   - several orchestrated multi-agent workflows. These ran AI agents in parallel, each with an assigned role: researcher, critic, designer, judge, synthesiser, red-teamer, implementer, test engineer or benchmark engineer.
 - **Every file write in the transcripts was made by this tooling.** The sources cannot show whether the author edited files outside the recorded session.
 - **Agents ran at most two at a time.** The main session states "This machine has 4 CPUs, so only two agents run at a time" [T:500]. The agents' start and end times (§8) fit this.
+- **Models.** The counts are of assistant messages per model in this project's session and agent transcripts, counted on 2026-11-20:
+
+  | Model | Dates | Messages |
+  |---|---|---:|
+  | Claude Opus 5.5 (`claude-opus-5-5`) | 2026-10-19 to 2026-11-20 | 5,911 |
+  | Claude Opus 4.8 (`claude-opus-4-8`) | 2026-10-21 | 83 |
+  | Claude Haiku 5.5 (`claude-haiku-5-5`) | 2026-10-22 | 43 |
+  | Claude Fable 5.2 (`claude-fable-5-2`) | 2026-11-13 to 2026-11-15 | 185 |
+
+  On 2026-11-20 the author moved the main session from Fable 5.2 back to Opus 5.5, after Fable's usage limit cut off a review run. Workflow agents inherit the main session's model.
 
 ### 0.3 Environment, as recorded in the transcript
 

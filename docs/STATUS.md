@@ -1,6 +1,6 @@
 # sohamalloc: project status
 
-Last updated: 2026-11-15, branch `sohamalloc-dev`.
+Last updated: 2026-11-20, branch `sohamalloc-dev`.
 
 ## Where things stand
 
@@ -86,7 +86,7 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 
   | Wave | Lenses | Status |
   |---|---|---|
-  | 1 (pilot) | signal-reentrancy | running since 2026-11-15, third launch, workflow run `wf_1cc28c75-b3f`; it continues from `bench/out/review5-work/signal-reentrancy/NOTES.md`. Two earlier launches (`wf_14912398-7ae`, `wf_2dbcefe8-aef`) were cut off by the session limit after 10 and 20 minutes |
+  | 1 (pilot) | signal-reentrancy | running since 2026-11-20, fourth launch, workflow run `wf_5344e75c-add`, on Opus 5.5; it continues from `bench/out/review5-work/signal-reentrancy/NOTES.md`. Earlier launches: `wf_14912398-7ae` and `wf_2dbcefe8-aef`, cut off by the session limit after 10 and 20 minutes; `wf_1cc28c75-b3f` (2026-11-15), cut off by the Fable model's usage limit after 9.5 minutes (216,251 tokens, 13 tool calls, no result returned) |
   | 2 | concurrency, lifecycle-fork-init | not started |
   | 3 | api-and-memory, portability-and-failure-paths | not started |
   | 4 | hardening-checks, page-heap-and-release | not started |
@@ -99,9 +99,10 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 - **Results:** saved per wave into `docs/research-log/data/review5/wave<N>.json` as soon as a wave finishes.
 - **Interim findings of wave 1, from the reviewer's notes; not yet checked by a refuter:**
   - S1, reproduced by the reviewer: when a process's first use of the allocator is `fork()`, `fork_prepare` runs the lazy init without the busy byte set. A signal handler on that thread that allocates inside two windows of a few instructions each then waits forever.
-  - S2, being reproduced when the run was cut off: a run freed by a handler that interrupted a fast-path free is deferred and not drained when that fast path returns, so a thread that only frees keeps it (the R4-3 fix may be incomplete).
+  - S2, reproduced by the third launch in 2 of 6 runs: a run freed by a handler that interrupted a fast path is deferred when another thread holds the page-heap lock, and no fast path drains it. Kept 1,600 KiB and 43,520 KiB until the thread's next slow path. The variant with a single thread that only frees passed 6 of 6. The R4-3 fix may be incomplete.
   - S5, minor: the pending drain runs in refills and `soham_collect`, not in "the next slow path of any thread" as the notes say.
-- **Why the first launches died (measured 2026-11-15):** the main session's conversation had grown to about 624,000 tokens, re-read at every step. That day its ten steps used 1.24 million fresh input tokens and 4.3 million cached ones, against the reviewer's 0.43 and 2.8 million. Compact the main session (`/compact`) or start a new one from this file before continuing; the review itself is not the main cost.
+  - Not diagnosed: the reviewer's single-step harness, run on the debug library, died of SIGTRAP after its last section. It is not yet known whether the trap comes from the harness or from the library.
+- **Why the launches died.** The first two (2026-11-15): the main session's conversation had grown to about 624,000 tokens, re-read at every step. That day its ten steps used 1.24 million fresh input tokens and 4.3 million cached ones, against the reviewer's 0.43 and 2.8 million. The third: the Fable model's own usage limit, which also blocked `/compact`. On 2026-11-20 the author switched the main model to Opus 5.5, which workflow agents inherit. Keep the main session small (`/compact`, or a new session started from this file); the review itself is not the main cost.
 - **Working folders:** `bench/out/review5-work/<lens>/` (git-ignored, survives a reboot). Each reviewer keeps a `NOTES.md` there and continues from it when its wave is launched again.
 - **If a wave is interrupted:** launch it again with the same `args`. In the same session add `resumeFromRunId: "<run id of that wave>"`, and finished agents replay from the journal; in a new session the reviewers pick up their `NOTES.md`.
 
