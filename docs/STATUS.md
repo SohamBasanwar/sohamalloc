@@ -79,29 +79,35 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
   - mingw 9/9 + 2 skipped;
   - sigstorm 66/66.
 
-**Gate 2 still needs a clean round. Review round 5 of `d2add24` now runs in waves** (plan of 2026-11-13). Three earlier attempts (2026-10-23, 2026-10-29, 2026-11-05) launched every reviewer at once and were cut off by usage limits or stopped with nothing finished.
+**Gate 2 still needs a clean round.** Review round 5 of `d2add24` ran in waves: two lenses per wave, each wave a workflow of its own, so that it fits in one usage window (plan of 2026-11-13).
 
-- **Why waves.** Measured on 2026-11-13: an agent in this setup starts with about 60,000 tokens of fixed context and re-reads it on every turn, and 27 small test agents used up a whole usage window. Seven deep reviewers plus their refuters cannot fit in one window.
-- **Design.** Seven lenses, two per wave, each wave a workflow of its own: reviewers at effort high; one refuter per finding at medium; a second, independent refuter at high for a finding claimed or judged critical or major; a tie-breaker at xhigh when those two disagree. Reviewers keep a `NOTES.md` in their scratch directory. After the last wave, and only if nothing blocking was confirmed, a completeness critic names gap areas.
+- **Wave 1 (pilot: the signal-reentrancy lens) finished on 2026-11-20.** Workflow `wf_5344e75c-add`, the fourth launch, ran on Opus 5.5; the first three were cut off by usage limits. It made 4 findings, all confirmed by refuters:
+  - **R5-1, critical:** a handler that allocates during the lazy init that `fork()` runs (the process's first allocator use) hangs.
+  - **R5-2, major:** runs freed by a handler that interrupted a fast path stay allocated until the thread's next slow path. The R4-3 fix was incomplete.
+  - **R5-3 and R5-4, minor:** documentation (the pending drain; `nothrow` new with a `new_handler` installed).
+  - Details: `docs/research-log/03-defects-and-faults.md`, "Review round 5". Raw result: `docs/research-log/data/review5/wave1.json` (git-excluded).
+- **Cost of the pilot:** 7 agents, 714,094 subagent tokens, 81 tool calls, 17 minutes. The reviewer took 63 turns and 107,056 output tokens; each refuter 7 to 20 turns and 4,000 to 16,000 output tokens. A wave of two lenses should cost about 1.4 million.
+- **Fixes of 2026-11-21, committed and pushed at the author's request before the matrix finished** (at that point: all nine builds and the native suite, 28 of 28, had passed):
+  - R5-1 and R5-2 are fixed in `src/api.c`; R5-3 and R5-4 are corrected in `docs/IMPLEMENTATION_NOTES.md`.
+  - New regression tests `regress_sig_fork_init` and `regress_sig_fastpath` (x86-64 Linux) fail on both `d2add24` libraries and pass on the fixed ones: `docs/research-log/data/regress-before-after/2026-11-21-review5-before-after.txt`.
+  - The fast-path check costs 3 instructions per malloc and per free (callgrind). Its time cost is for the gate-4 campaign to measure.
+- **Decision (2026-11-21): round 5 stops after wave 1.** Its blocking findings are fixed first. The remaining six lenses, and the signal lens again, then review the fixed commit as round 6. Reason: round 5 can no longer be the clean round, and reviewing `d2add24` further would still leave a full round to run after the fixes.
+- **Running now:** the full matrix on the fixed code. If it is interrupted, run it again; it starts from scratch.
 
-  | Wave | Lenses | Status |
-  |---|---|---|
-  | 1 (pilot) | signal-reentrancy | running since 2026-11-20, fourth launch, workflow run `wf_5344e75c-add`, on Opus 5.5; it continues from `bench/out/review5-work/signal-reentrancy/NOTES.md`. Earlier launches: `wf_14912398-7ae` and `wf_2dbcefe8-aef`, cut off by the session limit after 10 and 20 minutes; `wf_1cc28c75-b3f` (2026-11-15), cut off by the Fable model's usage limit after 9.5 minutes (216,251 tokens, 13 tool calls, no result returned) |
-  | 2 | concurrency, lifecycle-fork-init | not started |
-  | 3 | api-and-memory, portability-and-failure-paths | not started |
-  | 4 | hardening-checks, page-heap-and-release | not started |
-  | 5 | completeness critic and gap reviewers | not started |
+  ```sh
+  tools/verify-matrix.sh bench/out/matrix-2026-11-21-review5
+  ```
 
-  Wave 1 is a single reviewer on purpose: its token cost, read from the workflow result, decides how many reviewers fit in one usage window.
-
+  When it finishes, copy its `summary.txt` to `docs/research-log/data/verify/2026-11-21-review5-fixes-matrix.txt`, commit that record and push. If a step fails, fix it in a new commit; round 6 starts only on a commit that passed the matrix.
+- **Also running:** two independent refuters of the two fixes, workflow `wf_29c0820d-a59` (script `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-verify-r5-fixes-wf_29c0820d-a59.js`). They work in `bench/out/review5-work/verify-r5-1/` and `verify-r5-2/` and keep a `NOTES.md` there. If interrupted, launch it again with `Workflow({scriptPath: "<script>"})`; in the same session add `resumeFromRunId`. A problem either confirms is fixed in a new commit before round 6.
+- **Round 6 plan:** the round-5 script with the commit and the library folder changed (`bench/out/review6-libs-<commit>/`). Waves of two lenses:
+  1. signal-reentrancy and concurrency;
+  2. lifecycle-fork-init and api-and-memory;
+  3. portability-and-failure-paths and hardening-checks;
+  4. page-heap-and-release;
+  5. the completeness critic and gap reviewers.
 - **Script:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round5.js`, launched as `Workflow({scriptPath: "<script>", args: {lenses: ["<lens>", "<lens>"]}})`. A copy of the script is kept in `docs/research-log/data/review5/` (git-excluded).
-- **Frozen libraries:** `bench/out/review5-libs-d2add24/` (the script reads them there). sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
-- **Results:** saved per wave into `docs/research-log/data/review5/wave<N>.json` as soon as a wave finishes.
-- **Interim findings of wave 1, from the reviewer's notes; not yet checked by a refuter:**
-  - S1, reproduced by the reviewer: when a process's first use of the allocator is `fork()`, `fork_prepare` runs the lazy init without the busy byte set. A signal handler on that thread that allocates inside two windows of a few instructions each then waits forever.
-  - S2, reproduced by the third launch in 2 of 6 runs: a run freed by a handler that interrupted a fast path is deferred when another thread holds the page-heap lock, and no fast path drains it. Kept 1,600 KiB and 43,520 KiB until the thread's next slow path. The variant with a single thread that only frees passed 6 of 6. The R4-3 fix may be incomplete.
-  - S5, minor: the pending drain runs in refills and `soham_collect`, not in "the next slow path of any thread" as the notes say.
-  - Not diagnosed: the reviewer's single-step harness, run on the debug library, died of SIGTRAP after its last section. It is not yet known whether the trap comes from the harness or from the library.
+- **Frozen libraries of round 5:** `bench/out/review5-libs-d2add24/` (the script reads them there). sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
 - **Why the launches died.** The first two (2026-11-15): the main session's conversation had grown to about 624,000 tokens, re-read at every step. That day its ten steps used 1.24 million fresh input tokens and 4.3 million cached ones, against the reviewer's 0.43 and 2.8 million. The third: the Fable model's own usage limit, which also blocked `/compact`. On 2026-11-20 the author switched the main model to Opus 5.5, which workflow agents inherit. Keep the main session small (`/compact`, or a new session started from this file); the review itself is not the main cost.
 - **Working folders:** `bench/out/review5-work/<lens>/` (git-ignored, survives a reboot). Each reviewer keeps a `NOTES.md` there and continues from it when its wave is launched again.
 - **If a wave is interrupted:** launch it again with the same `args`. In the same session add `resumeFromRunId: "<run id of that wave>"`, and finished agents replay from the journal; in a new session the reviewers pick up their `NOTES.md`.
@@ -132,8 +138,8 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 
 ## Next
 
-1. **Review round 5** on the round-4-fix commit; repeat rounds until none confirms a critical or major finding (gate 2). Fix what it confirms, run `tools/verify-matrix.sh`, and review again; repeat until a round confirms no critical or major finding (gate 2).
-2. **Campaign.** Done on `d2add24`: the sohamalloc rerun with all 9 handler kinds and the `aligned` kind for the other eight allocators are archived. Rerun sohamalloc's rows if review round 5 changes allocator code.
+1. **Finish checking the round-5 fixes** (the matrix and the two refuters above), then **review round 6** on a commit that passed both, in the waves above. Fix what it confirms, run `tools/verify-matrix.sh`, and review again, until a round confirms no critical or major finding (gate 2).
+2. **Campaign.** Done on `d2add24`: the sohamalloc rerun with all 9 handler kinds and the `aligned` kind for the other eight allocators are archived. The round-5 fixes change allocator code, so sohamalloc's rows must be rerun on the final code.
 3. **Busy-byte cost** measurement, then the tuned benchmark campaign: ≥10 repetitions with confidence intervals, on a quiet machine with `sudo tools/bench-host.sh tune`.
 4. **Research log.** Complete `02-experiments`, `04-design-decisions` and `06-paper-assessment`, and extend `01-timeline` past 2026-10-19.
 5. **Paper and presentation** only after the four gates hold.

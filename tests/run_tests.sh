@@ -239,6 +239,8 @@ regress_bss_bounded regress/bss_bounded.c c 60 soham
 regress_large_fallback regress/signal_large_fallback.c c 60 soham
 regress_deferred_free regress/signal_deferred_free.c c 120 soham
 regress_atfork_alloc regress/fork_atfork_alloc.c c 60 soham
+regress_sig_fork_init regress/signal_fork_init.c c 120 soham posix nosan
+regress_sig_fastpath regress/signal_fastpath_defer.c c 120 soham posix nosan
 "
 fi
 

@@ -158,11 +158,19 @@ When a heap retires its exhausted `cur` page to the full list, it sets WATCH wit
 
 ### 5.4 Pending and deferred work (handler context)
 
-- A handler that becomes responsible pushes the page onto the global pending stack (`pend_state` prevents double insertion). The next slow path of any thread runs `resolve`.
+- A handler that becomes responsible pushes the page onto the global pending stack (`pend_state` prevents double insertion). The next bin refill outside handler context, in any thread, runs `resolve` (`pending_drain`), and so does `soham_collect`; the run and solo slow paths do not. Until then a page that is fully free stays queued in its class pool, where a claim of that class can still reuse it. The memory held this way is bounded by what handlers freed into orphaned or queued pages. (Corrected 2026-11-21: this said "the next slow path of any thread"; review round 5.)
 - An entry can be stale: the page may have been claimed, released and reused, even as a run. So `resolve` reads the page class only after seeing PENDING, and rechecks both under the class pool's lock.
 - The deferred-free list is taken with an atomic exchange and pushed with a CAS. A handler can run between any two instructions of the owner.
 - **Handler frees of runs and solos** are done at once when their lock can be taken by trylock (`run_free_try`, `solo_free_try`), which is the common case: the interrupted call holds that lock only inside a page-heap or solo-table operation. Otherwise the run goes onto the thread's TLS deferred list, and a pointer whose solo lookup must wait goes into a 64-entry side table (`defer_slot_push`; when it is full, the pointer is leaked with a warning).
-- **Draining** (`deferred_drain`, which also empties the side table) happens at the start and the end of the slow paths, at the end of `soham_collect`, `soham_get_stats` and `soham_check_heap`, in the fork handlers, and at the end of thread exit. So a free that a handler had to defer is done when the interrupted call finishes. Before 2026-10-23 it waited for the thread's next allocation slow path, possibly forever; frees deferred during thread exit leaked (review round 4).
+- **Draining** (`deferred_drain`, which also empties the side table) happens at the end of every busy region:
+  - the slow paths (at their start as well);
+  - the malloc and free fast paths, which test only the thread's own list (one load and a branch after their final busy store) and call the drain out of line (`deferred_tail`);
+  - `soham_collect`, `soham_get_stats` and `soham_check_heap`;
+  - the solo lookups of `malloc_usable_size` and `realloc`, and `mallinfo`;
+  - the fork handlers, and thread exit.
+
+  So a run that a handler had to defer is freed when the interrupted call finishes. A pointer in the side table is freed by the next slow path or introspection call of any thread.
+- **History.** Before 2026-10-23 a deferred free waited for the thread's next allocation slow path, possibly forever, and frees deferred during thread exit leaked (review round 4). Until 2026-11-21 the fast paths did not drain, so a thread that kept to them held such runs until its next slow path (review round 5, `tests/regress/signal_fastpath_defer.c`).
 
 ### 5.5 Page heap release (§6)
 
@@ -212,8 +220,10 @@ The fork-prepare handler takes them in exactly this order; the parent and child 
 
 - **Registration.** The handlers are registered at load by an ELF constructor, not by init. Before 2026-10-23 init registered them at its end, so a fork in the middle of another thread's init left a child that could never finish it (review round 4).
 - **prepare:**
-  - It first initialises the allocator if needed: an init in progress is waited for, and one not started is run here. A child never copies a half-built allocator, and every lock can be taken below. (A first fix skipped locking before init; another thread could then finish init and take a lock just before the fork, and 1 child in 40 hung.) Only a fork from inside init itself locks nothing (`fork_skip`).
-  - It saves the calling thread's busy byte in its own TLS (`fork_busy`) and sets `BUSY_IN`, then takes every lock in the order above.
+  - It saves the calling thread's busy byte in its own TLS (`fork_busy`) and sets `BUSY_IN`.
+  - Then it initialises the allocator if needed: an init in progress is waited for, and one not started is run here. A child never copies a half-built allocator, and every lock can be taken below. (A first fix skipped locking before init; another thread could then finish init and take a lock just before the fork, and 1 child in 40 hung.) Only a fork from inside init itself locks nothing (`fork_skip`).
+  - `BUSY_IN` comes before init, as in a thread's first allocation, so a signal handler that interrupts init is served from the static arena. Until 2026-11-21 init came first. A handler that allocated in two short windows of it then waited forever for the init its own thread was running (review round 5, `tests/regress/signal_fork_init.c`).
+  - Then it takes every lock in the order above.
   - Then it marks the thread as holding them all (`t_fork_owner`) and clears `BUSY_IN`. Until parent or child runs, its blocking locks and unlocks are no-ops, so atfork handlers registered before ours, which run in that window, allocate normally. Before 2026-10-23 they were served like signal handlers and failed. Trylocks are unchanged, so a signal handler in the window still falls back. The saved value is per thread because glibc runs the atfork handlers of threads that fork at the same time concurrently: with one process-wide copy (before 2026-10-21), a thread could restore another thread's busy byte, and a thread without a heap then crashed in the malloc fast path (defect R3-1).
 - **parent:** set `BUSY_IN`, clear `t_fork_owner`, release the locks, restore the busy byte, and drain deferred frees.
 - **child:** set `BUSY_IN`, clear `t_fork_owner`, reset every lock. Every other thread's heap that was not inside an operation (its owner's `busy` byte is readable in the child) goes to the heap pool as-is, touching no page metadata, which keeps the child copy-on-write friendly. A heap that was inside an operation is leaked. The child re-seeds the RNG.
@@ -281,7 +291,7 @@ A handler therefore never waits for a lock that its own interrupted thread holds
    - a mapping of its own needs the solo table's lock, taken by trylock, and a successful `mmap`.
 
    A handler must check for NULL, as with any allocator.
-2. **Deferred frees.** A free of a run or solo (192 KiB and above, plus handler mappings of any size) made in a handler that interrupted the allocator is done at once when its lock can be taken by trylock. Otherwise it is done when the interrupted call finishes (§5.4). A pointer whose solo lookup must wait is kept in a 64-entry side table; when that is full the pointer is leaked, with a warning under `SOHAMALLOC_VERBOSE=1`.
+2. **Deferred frees.** A free of a run or solo (192 KiB and above, plus handler mappings of any size) made in a handler that interrupted the allocator is done at once when its lock can be taken by trylock. Otherwise a run is freed when the interrupted call finishes (§5.4). A pointer whose solo lookup must wait is kept in a 64-entry side table, which the next slow path or introspection call of any thread empties. When the table is full the pointer is leaked, with a warning under `SOHAMALLOC_VERBOSE=1`.
 3. **Large blocks in handler context:**
    - `realloc` of a solo (32 MiB and above) returns NULL with ENOMEM when the solo table's lock is held;
    - `malloc_usable_size` of a solo returns 0 in that case;
@@ -296,4 +306,8 @@ A handler therefore never waits for a lock that its own interrupted thread holds
    - `mallinfo` and `mallinfo2` return zeros.
 8. **First use from a handler.** If a thread's first allocator call is made in a handler (one that did not interrupt the allocator), the handler attaches the thread's heap. That takes the heap lock (it waits only for other threads) and calls `pthread_setspecific`. If it is the process's first call, the handler also initialises the allocator, which calls `pthread_key_create`, `pthread_atfork`, `getrandom` and `mmap`. None of these is on POSIX's async-signal-safe list. They are safe on glibc and musl in practice, except when the handler interrupted the C library inside the same functions.
 9. **OS calls.** In a handler the allocator may call `mmap`, `munmap`, `mprotect` and `madvise` (window creation, commit growth, solos). These are thin system-call wrappers on Linux (glibc and musl) but are not on POSIX's async-signal-safe list. errno is preserved on success, and set to ENOMEM on failure.
-10. **C++ throwing `new` that fails in a handler** calls the `new_handler` or throws `std::bad_alloc`, and at its first failure may look up the C++ runtime with `dlsym`. Neither is async-signal-safe. Use the `nothrow` forms in handlers.
+10. **C++ `new` that fails in a handler.**
+    - The throwing forms call the `new_handler` or throw `std::bad_alloc`, and at their first failure may look up the C++ runtime with `dlsym`.
+    - The `nothrow` forms do the same when a `new_handler` is installed. On failure they hand over to the runtime's own nothrow operator, looked up with `dlsym`, which calls the `new_handler` and catches `std::bad_alloc`.
+
+    None of this is async-signal-safe. In handlers, call `malloc` or `aligned_alloc` directly. The `nothrow` forms avoid it only while no `new_handler` is installed. (Corrected 2026-11-21: this advised the `nothrow` forms without that condition; review round 5.)

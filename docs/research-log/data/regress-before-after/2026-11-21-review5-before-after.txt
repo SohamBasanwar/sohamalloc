@@ -1,0 +1,54 @@
+Review round 5 fixes: regression tests before and after (2026-11-21, sohambasanwar, 7.0.0-43-generic, gcc 15)
+Before: the frozen d2add24 libraries (bench/out/review5-libs-d2add24, sha256 release 8da10337, debug 418db9aa).
+After: this working tree built with the fixes (release c5067f6c, debug a50d1f0e), base commit fd8a6f2.
+Command per library: tests/run_tests.sh --lib LIB --only=regress_sig_fork_init,regress_sig_fastpath
+
+===== BEFORE release (bench/out/review5-libs-d2add24/libsohamalloc.so)
+regress_sig_fork_init FAIL               4.3s  exit status 1: FAIL [signal_fork_init] a handler that allocated inside fork() did not return: K=48..48:hang K=46..46:hang K=47..47:hang K=49..49:hang K=8721..8784:hang
+regress_sig_fastpath FAIL               0.7s  exit status 1: FAIL [signal_fastpath_defer] part 1: runs freed in a handler stay allocated after the interrupted free() returned
+== 0 passed, 2 failed, 0 skipped, 0 informational in 5s
+--- regress_sig_fork_init log
+fork() runs 9428 library instructions; 543 children; handler calls made 9360; hangs 5; other failures 0
+FAIL [signal_fork_init] a handler that allocated inside fork() did not return: K=48..48:hang K=46..46:hang K=47..47:hang K=49..49:hang K=8721..8784:hang
+--- regress_sig_fastpath log
+part 1: the handler freed 3000 runs of 327680 B; still allocated after the free() calls returned: 1111, after 100000 more fast-path pairs: 1111
+FAIL [signal_fastpath_defer] part 1: runs freed in a handler stay allocated after the interrupted free() returned
+part 2: 1024 stepped calls, the handler freed 880 runs (page walks meanwhile: 12594); most runs still allocated right after a call returned: 42 (after free, run freed at its library instruction 45)
+FAIL [signal_fastpath_defer] part 2: a run freed in a handler stayed allocated after the interrupted fast path returned
+
+===== BEFORE debug (bench/out/review5-libs-d2add24/libsohamalloc-debug.so)
+regress_sig_fork_init FAIL               4.2s  exit status 1: FAIL [signal_fork_init] a handler that allocated inside fork() did not return: K=46..46:hang K=49..49:hang K=47..47:hang K=48..48:hang K=8721..8784:hang
+regress_sig_fastpath FAIL               0.5s  exit status 1: FAIL [signal_fastpath_defer] part 1: runs freed in a handler stay allocated after the interrupted free() returned
+== 0 passed, 2 failed, 0 skipped, 0 informational in 5s
+--- regress_sig_fork_init log
+fork() runs 9569 library instructions; 545 children; handler calls made 9501; hangs 5; other failures 0
+FAIL [signal_fork_init] a handler that allocated inside fork() did not return: K=46..46:hang K=49..49:hang K=47..47:hang K=48..48:hang K=8721..8784:hang
+--- regress_sig_fastpath log
+part 1: the handler freed 3000 runs of 327680 B; still allocated after the free() calls returned: 1083, after 100000 more fast-path pairs: 1083
+FAIL [signal_fastpath_defer] part 1: runs freed in a handler stay allocated after the interrupted free() returned
+part 2: 1024 stepped calls, the handler freed 880 runs (page walks meanwhile: 8976); most runs still allocated right after a call returned: 43 (after free, run freed at its library instruction 45)
+FAIL [signal_fastpath_defer] part 2: a run freed in a handler stayed allocated after the interrupted fast path returned
+
+===== AFTER release (build/libsohamalloc.so)
+regress_sig_fork_init PASS               1.3s  
+regress_sig_fastpath PASS               3.7s  
+== 2 passed, 0 failed, 0 skipped, 0 informational in 5s
+--- regress_sig_fork_init log
+fork() runs 9428 library instructions; 543 children; handler calls made 9428; hangs 0; other failures 0
+PASS
+--- regress_sig_fastpath log
+part 1: the handler freed 3000 runs of 327680 B; still allocated after the free() calls returned: 0, after 100000 more fast-path pairs: 0
+part 2: 1024 stepped calls, the handler freed 904 runs (page walks meanwhile: 40805); most runs still allocated right after a call returned: 0
+PASS
+
+===== AFTER debug (build-debug/libsohamalloc.so)
+regress_sig_fork_init PASS               1.3s  
+regress_sig_fastpath PASS               3.7s  
+== 2 passed, 0 failed, 0 skipped, 0 informational in 5s
+--- regress_sig_fork_init log
+fork() runs 9569 library instructions; 545 children; handler calls made 9569; hangs 0; other failures 0
+PASS
+--- regress_sig_fastpath log
+part 1: the handler freed 3000 runs of 327680 B; still allocated after the free() calls returned: 0, after 100000 more fast-path pairs: 0
+part 2: 1024 stepped calls, the handler freed 904 runs (page walks meanwhile: 40446); most runs still allocated right after a call returned: 0
+PASS

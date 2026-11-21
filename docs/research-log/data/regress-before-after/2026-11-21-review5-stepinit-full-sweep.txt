@@ -1,0 +1,6 @@
+Full single-step sweep of fork_prepare with the reviewer's harness (stepinit.c + shim.so, bench/out/review5-work/signal-reentrancy), one fresh process per instruction K, on the FIXED libraries; 2026-11-21.
+A line 'K=.. status=..' is a K whose handler did not return (142 = SIGALRM after 3 s) or another failure; no such line means every K passed.
+== /home/sohambasanwar/sohamalloc/build/libsohamalloc.so (sha256 c5067f6c): fork_prepare runs 9068 library instructions; sweeping K=1..9068
+   done in 75 s
+== /home/sohambasanwar/sohamalloc/build-debug/libsohamalloc.so (sha256 a50d1f0e): fork_prepare runs 9209 library instructions; sweeping K=1..9209
+   done in 76 s

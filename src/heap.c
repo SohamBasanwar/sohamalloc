@@ -437,9 +437,11 @@ static void resolve(rec_t *r) {
 }
 
 /* Pages whose PENDING was set in handler context, resolved later by the
- * next slow path of any thread.  pend_state keeps a page from being pushed
- * twice: a second responsible handler finds it already queued, and the
- * drain's resolve() re-reads xfree, so the newer PENDING is handled too. */
+ * next bin refill outside handler context in any thread, or by
+ * soham_collect (not by the run and solo paths).  pend_state keeps a page
+ * from being pushed twice: a second responsible handler finds it already
+ * queued, and the drain's resolve() re-reads xfree, so the newer PENDING is
+ * handled too. */
 static _Atomic(rec_t *) g_pending;
 
 static void pending_push(rec_t *r) {

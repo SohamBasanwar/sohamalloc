@@ -296,6 +296,9 @@ SOHAM_INLINE void busy_leave(soham_tls_t *t) {
   atomic_store_explicit(&t->busy, t->heap ? 0 : BUSY_NOHEAP, memory_order_relaxed);
 }
 
+static void deferred_drain(soham_tls_t *t);
+SOHAM_INLINE bool deferred_pending(soham_tls_t *t);
+
 /* solo_usable with tls.busy held, or trylock only from a signal handler
  * that interrupted the allocator (H2). */
 static size_t solo_usable_busy(uintptr_t a) {
@@ -303,6 +306,7 @@ static size_t solo_usable_busy(uintptr_t a) {
   if (!busy_enter(t)) return solo_usable(a, true);
   size_t us = solo_usable(a, false);
   busy_leave(t);
+  if (unlikely(deferred_pending(t))) deferred_drain(t);
   return us;
 }
 
@@ -340,9 +344,6 @@ static SOHAM_NOINLINE bool thread_prepare(soham_tls_t *t) {
   busy_leave(t);
   return ready;
 }
-
-static void deferred_drain(soham_tls_t *t);
-SOHAM_INLINE bool deferred_pending(soham_tls_t *t);
 
 /* Thread exit (the OS layer's key destructor / FLS callback).  The heap
  * comes from the callback argument, not from TLS: with emulated TLS
@@ -410,9 +411,10 @@ SOHAM_INLINE bool deferred_pending(soham_tls_t *t) {
          atomic_load_explicit(&g_defer_slots_used, memory_order_relaxed) != 0;
 }
 
-/* Called outside handler context, busy clear: at the start and the end of
- * the slow paths (a handler that interrupted one defers its frees until the
- * interrupted call has finished), at thread exit, in the fork handlers. */
+/* Called outside handler context, busy clear, at the end of every busy
+ * region (a handler that interrupted the region put its frees off until the
+ * interrupted call finishes): the slow and the fast paths, the introspection
+ * calls, thread exit, the fork handlers; also at the start of the slow paths. */
 static void deferred_drain(soham_tls_t *t) {
   void *l;
   while ((l = atomic_exchange_explicit(&t->deferred, NULL, memory_order_relaxed)) != NULL) {
@@ -430,6 +432,10 @@ static void deferred_drain(soham_tls_t *t) {
     }
   }
 }
+
+/* The fast paths' end: they test only the thread's list (a pointer in the
+ * side table is freed by the next drain of any thread).  Out of line. */
+static SOHAM_NOINLINE SOHAM_COLD void deferred_tail(soham_tls_t *t) { deferred_drain(t); }
 
 /* ---------------------------------------------------------------------- */
 /* Allocation                                                              */
@@ -572,6 +578,8 @@ SOHAM_INLINE void *malloc_fast(soham_tls_t *t, size_t n) {
     }
     signal_fence();
     atomic_store_explicit(&t->busy, 0, memory_order_relaxed);
+    signal_fence();
+    if (unlikely(atomic_load_explicit(&t->deferred, memory_order_relaxed) != NULL)) deferred_tail(t);
     return (void *)b;
   }
   return NULL;
@@ -717,6 +725,8 @@ SOHAM_API SOHAM_HOT void soham_free(void *p) {
       owned_free(t->heap, rh, a);
       signal_fence();
       atomic_store_explicit(&t->busy, 0, memory_order_relaxed);
+      signal_fence();
+      if (unlikely(atomic_load_explicit(&t->deferred, memory_order_relaxed) != NULL)) deferred_tail(t);
       return;
     }
     signal_fence();
@@ -1046,13 +1056,16 @@ static void fork_prepare(void) {
    * a lock between this check and the fork.) */
   t->fork_skip = (uint8_t)(t->state == TLS_INIT);
   if (t->fork_skip) return;
-  if (atomic_load_explicit(&g_init_state, memory_order_acquire) != 2) soham_init();
   /* Per thread: glibc runs the atfork handlers of concurrently forking
    * threads at the same time, so one saved value for the process would let a
    * thread restore another thread's busy byte. */
   t->fork_busy = atomic_load_explicit(&t->busy, memory_order_relaxed);
   atomic_store_explicit(&t->busy, (uint8_t)(t->fork_busy | BUSY_IN), memory_order_relaxed);
   signal_fence();
+  /* busy before init, as in thread_prepare: a handler that interrupts the
+   * init is served from the bss arena instead of waiting for the init its
+   * own frame is running (tests/regress/signal_fork_init.c). */
+  if (atomic_load_explicit(&g_init_state, memory_order_acquire) != 2) soham_init();
   soham_lock(&g_heap_lock);
   soham_lock(&g_shared_lock);
   for (unsigned c = 0; c < SOHAM_NCLASSES; c++) soham_lock(&g_pools[c].lock);
@@ -1126,8 +1139,14 @@ static void fork_child(void) {
 /* Internals for property tests (src/internal_test.h)                     */
 /* ---------------------------------------------------------------------- */
 
+/* busy around init, as in thread_prepare.  From a handler inside the
+ * allocator init is not run (it may be the init that handler interrupted). */
 static void ensure_init(void) {
-  if (atomic_load_explicit(&g_init_state, memory_order_acquire) != 2) soham_init();
+  if (atomic_load_explicit(&g_init_state, memory_order_acquire) == 2) return;
+  soham_tls_t *t = &t_tls;
+  if (!busy_enter(t)) return;
+  soham_init();
+  busy_leave(t);
 }
 
 SOHAM_API unsigned soham_internal_size_class(size_t n) { ensure_init(); return size_class(n); }
@@ -1239,6 +1258,7 @@ static struct soham_mallinfo2 soham_mallinfo2_impl(void) {
       nsolo = g_solo_n;
       soham_unlock(&g_solo_lock);
       busy_leave(t);
+      if (unlikely(deferred_pending(t))) deferred_drain(t);
     }
   }
   struct soham_mallinfo2 m = { 0 };
