@@ -1,0 +1,34 @@
+2026-11-21T23:20:08Z matrix start: fd8a6f2-dirty on 7.0.0-43-generic
+ M docs/IMPLEMENTATION_NOTES.md
+ M docs/STATUS.md
+ M docs/research-log/03-defects-and-faults.md
+ M src/api.c
+ M src/heap.c
+ M tests/run_tests.sh
+?? docs/research-log/data/regress-before-after/2026-11-21-review5-before-after.txt
+?? docs/research-log/data/regress-before-after/2026-11-21-review5-stepinit-full-sweep.txt
+?? tests/regress/signal_fastpath_defer.c
+?? tests/regress/signal_fork_init.c
+2026-11-21T23:20:09Z build-release rc=0 
+2026-11-21T23:20:11Z build-debug rc=0 
+2026-11-21T23:20:13Z build-thread rc=0 
+2026-11-21T23:20:16Z build-address rc=0 
+2026-11-21T23:20:19Z build-undefined rc=0 
+2026-11-21T23:20:21Z build-aarch64 rc=0 
+2026-11-21T23:20:24Z build-armhf rc=0 
+2026-11-21T23:20:25Z build-musl rc=0 
+2026-11-21T23:20:27Z build-mingw rc=0 
+2026-11-21T23:21:59Z native rc=0 == 28 passed, 0 failed, 0 skipped, 0 informational in 88s
+2026-11-21T23:23:30Z debug rc=0 == 28 passed, 0 failed, 0 skipped, 0 informational in 87s
+2026-11-21T23:23:46Z prefixed rc=0 == 11 passed, 0 failed, 0 skipped, 0 informational in 15s
+2026-11-21T23:25:30Z tsan rc=0 == 9 passed, 0 failed, 2 skipped, 0 informational in 103s
+2026-11-21T23:25:43Z asan rc=0 == 9 passed, 0 failed, 2 skipped, 0 informational in 13s
+2026-11-21T23:25:54Z ubsan rc=0 == 9 passed, 0 failed, 2 skipped, 0 informational in 10s
+2026-11-21T23:26:05Z preload rc=0 == 9 passed, 0 failed, 0 skipped
+2026-11-21T23:27:12Z aarch64 rc=0 == 26 passed, 0 failed, 2 skipped, 0 informational in 65s
+2026-11-21T23:28:21Z armhf rc=0 == 26 passed, 0 failed, 2 skipped, 0 informational in 65s
+2026-11-21T23:29:15Z musl rc=0 == 27 passed, 0 failed, 1 skipped, 0 informational in 54s
+2026-11-21T23:29:21Z mingw rc=0 == 9 passed, 0 failed, 2 skipped, 0 informational in 5s
+2026-11-21T23:30:30Z sigstorm runs=66 failures=0
+2026-11-21T23:30:30Z matrix end
+Code tested: identical to commit 668e128 for src/, include/, tests/, tools/ and CMakeLists.txt (no file under those paths changed after the matrix start; git diff 668e128 empty). Only docs/STATUS.md changed during the run. Logs: bench/out/matrix-2026-11-21-review5/ (git-ignored). The two skipped tests on aarch64 and armhf are regress_sig_fork_init and regress_sig_fastpath (x86-64 only); musl ran both and passed them.

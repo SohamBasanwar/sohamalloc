@@ -25,18 +25,19 @@ bench/run_bench.sh --reps 10 --cpus auto --seed 1 --env-pad --strict-host
 
 The statistics code has a self-test but has not had an independent review yet; do that before quoting its intervals in a paper.
 
-**Tests** on the commit with the review-round-3 fixes (record: `docs/research-log/data/verify/2026-10-21-review3-fixes-matrix.txt`):
+**Tests** on `668e128`, the round-5 fixes (record: `docs/research-log/data/verify/2026-11-21-review5-fixes-matrix.txt`):
 
 | Suite | Result |
 |---|---|
-| native | 23/23 |
-| debug (SOHAM_DEBUG) | 23/23 |
-| TSan, ASan, UBSan | 9/9 each |
+| native | 28/28 |
+| debug (SOHAM_DEBUG) | 28/28 |
+| prefixed | 11/11 |
+| TSan, ASan, UBSan | 9/9 + 2 skipped by design, each |
 | real programs under LD_PRELOAD | 9/9 |
-| aarch64, armhf (qemu) | 23/23 each |
-| musl | 22/22 + 1 skipped (C++) |
-| mingw (wine) | 9/9 |
-| sigstorm on the debug build | 54/54 survived |
+| aarch64, armhf (qemu) | 26/26 + 2 skipped (the two x86-64-only tests), each |
+| musl | 27/27 + 1 skipped (C++) |
+| mingw (wine) | 9/9 + 2 skipped |
+| sigstorm on the debug build | 66/66 survived |
 
 ## Review rounds
 
@@ -87,19 +88,12 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
   - **R5-3 and R5-4, minor:** documentation (the pending drain; `nothrow` new with a `new_handler` installed).
   - Details: `docs/research-log/03-defects-and-faults.md`, "Review round 5". Raw result: `docs/research-log/data/review5/wave1.json` (git-excluded).
 - **Cost of the pilot:** 7 agents, 714,094 subagent tokens, 81 tool calls, 17 minutes. The reviewer took 63 turns and 107,056 output tokens; each refuter 7 to 20 turns and 4,000 to 16,000 output tokens. A wave of two lenses should cost about 1.4 million.
-- **Fixes of 2026-11-21, committed and pushed at the author's request before the matrix finished** (at that point: all nine builds and the native suite, 28 of 28, had passed):
+- **Fixes of 2026-11-21, commit `668e128`** (pushed at the author's request before the matrix finished; the full matrix then passed on exactly that code, see the table above):
   - R5-1 and R5-2 are fixed in `src/api.c`; R5-3 and R5-4 are corrected in `docs/IMPLEMENTATION_NOTES.md`.
   - New regression tests `regress_sig_fork_init` and `regress_sig_fastpath` (x86-64 Linux) fail on both `d2add24` libraries and pass on the fixed ones: `docs/research-log/data/regress-before-after/2026-11-21-review5-before-after.txt`.
   - The fast-path check costs 3 instructions per malloc and per free (callgrind). Its time cost is for the gate-4 campaign to measure.
 - **Decision (2026-11-21): round 5 stops after wave 1.** Its blocking findings are fixed first. The remaining six lenses, and the signal lens again, then review the fixed commit as round 6. Reason: round 5 can no longer be the clean round, and reviewing `d2add24` further would still leave a full round to run after the fixes.
-- **Running now:** the full matrix on the fixed code. If it is interrupted, run it again; it starts from scratch.
-
-  ```sh
-  tools/verify-matrix.sh bench/out/matrix-2026-11-21-review5
-  ```
-
-  When it finishes, copy its `summary.txt` to `docs/research-log/data/verify/2026-11-21-review5-fixes-matrix.txt`, commit that record and push. If a step fails, fix it in a new commit; round 6 starts only on a commit that passed the matrix.
-- **Also running:** two independent refuters of the two fixes, workflow `wf_29c0820d-a59` (script `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-verify-r5-fixes-wf_29c0820d-a59.js`). They work in `bench/out/review5-work/verify-r5-1/` and `verify-r5-2/` and keep a `NOTES.md` there. If interrupted, launch it again with `Workflow({scriptPath: "<script>"})`; in the same session add `resumeFromRunId`. A problem either confirms is fixed in a new commit before round 6.
+- **Running now:** two independent refuters of the two fixes, workflow `wf_29c0820d-a59` (script `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-verify-r5-fixes-wf_29c0820d-a59.js`). They work in `bench/out/review5-work/verify-r5-1/` and `verify-r5-2/` and keep a `NOTES.md` there. If interrupted, launch it again with `Workflow({scriptPath: "<script>"})`; in the same session add `resumeFromRunId`. A problem either confirms is fixed in a new commit before round 6.
 - **Round 6 plan:** the round-5 script with the commit and the library folder changed (`bench/out/review6-libs-<commit>/`). Waves of two lenses:
   1. signal-reentrancy and concurrency;
   2. lifecycle-fork-init and api-and-memory;
@@ -138,7 +132,7 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 
 ## Next
 
-1. **Finish checking the round-5 fixes** (the matrix and the two refuters above), then **review round 6** on a commit that passed both, in the waves above. Fix what it confirms, run `tools/verify-matrix.sh`, and review again, until a round confirms no critical or major finding (gate 2).
+1. **Read the two refuters' results** (above), then **review round 6** on `668e128` (or a later commit that fixes what they confirm and passes the matrix), in the waves above. Fix what it confirms, run `tools/verify-matrix.sh`, and review again, until a round confirms no critical or major finding (gate 2).
 2. **Campaign.** Done on `d2add24`: the sohamalloc rerun with all 9 handler kinds and the `aligned` kind for the other eight allocators are archived. The round-5 fixes change allocator code, so sohamalloc's rows must be rerun on the final code.
 3. **Busy-byte cost** measurement, then the tuned benchmark campaign: ≥10 repetitions with confidence intervals, on a quiet machine with `sudo tools/bench-host.sh tune`.
 4. **Research log.** Complete `02-experiments`, `04-design-decisions` and `06-paper-assessment`, and extend `01-timeline` past 2026-10-19.
