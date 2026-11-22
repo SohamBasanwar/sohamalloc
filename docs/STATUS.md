@@ -100,13 +100,21 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
     - `fork()` called from a handler inside the init windows hangs both before and after the fix. That case is §10 limit 6, and the fix did not make it worse.
     - Still to check: the takeover path, concurrent forks, `ensure_init`, and whether the test could pass on broken code.
 
-    To resume, launch `Workflow({scriptPath: "<script>", args: {keys: ["r5-1-fork-init"]}})`; it continues from its notes.
-- **Round 6 plan:** the round-5 script with the commit and the library folder changed (`bench/out/review6-libs-<commit>/`). Waves of two lenses:
-  1. signal-reentrancy and concurrency;
-  2. lifecycle-fork-init and api-and-memory;
-  3. portability-and-failure-paths and hardening-checks;
-  4. page-heap-and-release;
-  5. the completeness critic and gap reviewers.
+    **Third launch running now:** workflow `wf_b495ca70-f7d` (2026-11-22). If it is interrupted, launch `Workflow({scriptPath: "<script>", args: {keys: ["r5-1-fork-init"]}})`; it continues from its notes.
+- **Review round 6 reviews `16e298e`** (the round-5 fixes and the refuters' follow-ups; the matrix passed on it).
+  - **Script:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round6.js`. It is generated from the round-5 script by `bench/out/make-review6-script.py 16e298e`; a copy is in `docs/research-log/data/review6/` (git-excluded).
+  - **Frozen libraries:** `bench/out/review6-libs-16e298e/`. sha256 prefixes: release `35b55928`, debug `3abf0edc`, armhf `ce84fdee`, aarch64 `cccfe454`.
+  - **Work folders:** `bench/out/review6-work/<lens>/`. **Results:** `docs/research-log/data/review6/wave<N>.json`.
+
+  | Wave | Lenses | Status |
+  |---|---|---|
+  | 1 | signal-reentrancy, concurrency | running since 2026-11-22, workflow `wf_442946b5-769` |
+  | 2 | lifecycle-fork-init, api-and-memory | not started |
+  | 3 | portability-and-failure-paths, hardening-checks | not started |
+  | 4 | page-heap-and-release | not started |
+  | 5 | completeness critic and gap reviewers (`args.gaps`) | not started |
+
+  To resume a wave, launch `Workflow({scriptPath: "<script>", args: {lenses: [<its lenses>]}})`; in the same session add `resumeFromRunId`. The reviewers continue from their `NOTES.md`.
 - **Script:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round5.js`, launched as `Workflow({scriptPath: "<script>", args: {lenses: ["<lens>", "<lens>"]}})`. A copy of the script is kept in `docs/research-log/data/review5/` (git-excluded).
 - **Frozen libraries of round 5:** `bench/out/review5-libs-d2add24/` (the script reads them there). sha256 prefixes: release `8da10337`, debug `418db9aa`, armhf `0e1b1d6a`, aarch64 `5d127fab`.
 - **Why the launches died.** The first two (2026-11-15): the main session's conversation had grown to about 624,000 tokens, re-read at every step. That day its ten steps used 1.24 million fresh input tokens and 4.3 million cached ones, against the reviewer's 0.43 and 2.8 million. The third: the Fable model's own usage limit, which also blocked `/compact`. On 2026-11-20 the author switched the main model to Opus 5.5, which workflow agents inherit. Keep the main session small (`/compact`, or a new session started from this file); the review itself is not the main cost.
@@ -139,7 +147,7 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 
 ## Next
 
-1. **When the R5-1 refuter finishes:** fix what it confirms, run the matrix on the working tree, commit and push. Then freeze that commit's libraries into `bench/out/review6-libs-<commit>/` and **review round 6** on it, in the waves above. Fix what it confirms, run `tools/verify-matrix.sh`, and review again, until a round confirms no critical or major finding (gate 2).
+1. **When the R5-1 refuter and round-6 wave 1 finish:** save `wave1.json` and check every finding against the code. Anything confirmed critical or major gets a test that fails before the fix and passes after, then the matrix and a commit, and the round restarts on the fixed commit. Otherwise run waves 2 to 5, sized by wave 1's measured cost. Fix what it confirms, run `tools/verify-matrix.sh`, and review again, until a round confirms no critical or major finding (gate 2).
 2. **Campaign.** Done on `d2add24`: the sohamalloc rerun with all 9 handler kinds and the `aligned` kind for the other eight allocators are archived. The round-5 fixes change allocator code, so sohamalloc's rows must be rerun on the final code.
 3. **Busy-byte cost** measurement, then the tuned benchmark campaign: ≥10 repetitions with confidence intervals, on a quiet machine with `sudo tools/bench-host.sh tune`.
 4. **Research log.** Complete `02-experiments`, `04-design-decisions` and `06-paper-assessment`, and extend `01-timeline` past 2026-10-19.
