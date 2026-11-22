@@ -1,0 +1,24 @@
+2026-11-21T23:57:49Z matrix start: 91d46a5-dirty on 7.0.0-43-generic
+2026-11-21T23:57:49Z build-release rc=0 
+2026-11-21T23:57:49Z build-debug rc=0 
+2026-11-21T23:57:50Z build-thread rc=0 
+2026-11-21T23:57:52Z build-address rc=0 
+2026-11-21T23:57:54Z build-undefined rc=0 
+2026-11-21T23:57:55Z build-aarch64 rc=0 
+2026-11-21T23:57:56Z build-armhf rc=0 
+2026-11-21T23:57:57Z build-musl rc=0 
+2026-11-21T23:57:58Z build-mingw rc=0 
+2026-11-21T23:59:36Z native rc=0 == 28 passed, 0 failed, 0 skipped, 0 informational in 96s
+2026-11-22T00:00:52Z debug rc=0 == 28 passed, 0 failed, 0 skipped, 0 informational in 73s
+2026-11-22T00:01:02Z prefixed rc=0 == 11 passed, 0 failed, 0 skipped, 0 informational in 10s
+2026-11-22T00:02:20Z tsan rc=0 == 9 passed, 0 failed, 2 skipped, 0 informational in 78s
+2026-11-22T00:02:35Z asan rc=0 == 9 passed, 0 failed, 2 skipped, 0 informational in 14s
+2026-11-22T00:02:46Z ubsan rc=0 == 9 passed, 0 failed, 2 skipped, 0 informational in 11s
+2026-11-22T00:02:58Z preload rc=0 == 9 passed, 0 failed, 0 skipped
+2026-11-22T00:04:04Z aarch64 rc=0 == 26 passed, 0 failed, 2 skipped, 0 informational in 63s
+2026-11-22T00:05:08Z armhf rc=0 == 26 passed, 0 failed, 2 skipped, 0 informational in 61s
+2026-11-22T00:06:03Z musl rc=0 == 27 passed, 0 failed, 1 skipped, 0 informational in 55s
+2026-11-22T00:06:09Z mingw rc=0 == 9 passed, 0 failed, 2 skipped, 0 informational in 5s
+2026-11-22T00:07:18Z sigstorm runs=66 failures=0
+2026-11-22T00:07:18Z matrix end
+Code tested: the working tree that the commit adding this file contains (on top of 91d46a5: ensure_init drains after its busy region; signal_fastpath_defer part 2 also steps malloc_usable_size of a solo). No file under src/, include/, tests/, tools/ or CMakeLists.txt changed after the matrix start. Logs: bench/out/matrix-2026-11-21b-review5/ (git-ignored). The two skipped tests on aarch64 and armhf are the x86-64-only regress_sig_fork_init and regress_sig_fastpath; musl ran and passed both. The machine was rebooted onto kernel 7.0.0-44 after this run.

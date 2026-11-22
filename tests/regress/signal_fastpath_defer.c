@@ -20,9 +20,10 @@
  * fast path; the frees that empty a page release it under the page-heap lock.
  * Part 2: while a second thread calls soham_get_stats in a loop (it walks
  * every page under the page-heap lock, so it holds that lock much of the
- * time), main makes single malloc(32) and free calls, both fast paths, each
- * stepped on its own; the handler frees one run at the K-th library
- * instruction of the call, for K = 1..KMAX, ROUNDS times over.  A handler
+ * time), main makes single malloc(32) and free calls, both fast paths, and
+ * malloc_usable_size calls on a 64 MiB solo (its solo lookup is a busy region
+ * of its own), each stepped on its own; the handler frees one run at the K-th
+ * library instruction of the call, for K = 1..KMAX, ROUNDS times over.  A handler
  * call that lands where busy is clear frees in normal context and drains the
  * list itself, which would hide the defect, so in_use is checked after every
  * call.
@@ -217,6 +218,10 @@ int main(void) {
     /* Part 2: single fast-path calls while another thread holds the lock. */
     if (!fill_stash()) { printf("FAIL [signal_fastpath_defer] malloc failed\n"); return 1; }
     void *keep = malloc(32);   /* the calls below reuse one block of a current page */
+    void *solo = malloc((size_t)64 << 20);
+    if (!solo) { printf("FAIL [signal_fastpath_defer] malloc failed\n"); return 1; }
+    *(char *)solo = 1;
+    static volatile size_t usable;
     atomic_store(&churn, 1);
     sem_post(&cstart);
     while (atomic_load(&walks) < 3) {}   /* the lock holder is running */
@@ -226,18 +231,20 @@ int main(void) {
     long worst_k = 0;
     for (int round = 0; round < ROUNDS && next_run < NRUNS - 2; round++) {
         for (long k = 1; k <= KMAX && next_run < NRUNS - 2; k++) {
-            for (int which = 0; which < 2; which++) {
+            for (int which = 0; which < 3; which++) {
                 static void *p;
                 ksteps = 0;
                 fire_at = k;
                 step_on();
-                if (which == 0) { p = malloc(32); } else { free(p); }
+                if (which == 0) p = malloc(32);
+                else if (which == 1) free(p);
+                else usable = malloc_usable_size(solo);
                 step_off();
                 fire_at = 0;
                 if (which == 0) *(volatile char *)p = 1;
                 calls++;
                 long m = (long)(next_run * acct) - (long)(base - in_use());
-                if (m > worst) { worst = m; worst_call = which ? "free" : "malloc"; worst_k = k; }
+                if (m > worst) { worst = m; worst_call = which == 0 ? "malloc" : which == 1 ? "free" : "malloc_usable_size(solo)"; worst_k = k; }
             }
         }
     }
@@ -250,6 +257,7 @@ int main(void) {
     printf("\n");
     empty_stash();
     free(keep);
+    free(solo);
     if (f2 == 0) { printf("FAIL [signal_fastpath_defer] part 2: the handler never ran\n"); return 1; }
     if (worst >= (long)acct) {
         printf("FAIL [signal_fastpath_defer] part 2: a run freed in a handler stayed allocated after the interrupted fast path returned\n");

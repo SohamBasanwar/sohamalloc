@@ -1147,6 +1147,7 @@ static void ensure_init(void) {
   if (!busy_enter(t)) return;
   soham_init();
   busy_leave(t);
+  if (unlikely(deferred_pending(t))) deferred_drain(t);
 }
 
 SOHAM_API unsigned soham_internal_size_class(size_t n) { ensure_init(); return size_class(n); }

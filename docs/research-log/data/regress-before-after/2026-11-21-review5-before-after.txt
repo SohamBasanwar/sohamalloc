@@ -52,3 +52,81 @@ PASS
 part 1: the handler freed 3000 runs of 327680 B; still allocated after the free() calls returned: 0, after 100000 more fast-path pairs: 0
 part 2: 1024 stepped calls, the handler freed 904 runs (page walks meanwhile: 40446); most runs still allocated right after a call returned: 0
 PASS
+
+######## Second pass, 2026-11-21 evening: after the independent refuter of R5-2 (workflow wf_29c0820d-a59) reported two minor gaps
+Changes: ensure_init drains after its busy region; part 2 of signal_fastpath_defer also steps malloc_usable_size of a 64 MiB solo.
+Mutants are the refuter's builds of the fixed tree with one drain removed (bench/out/review5-work/verify-r5-2/m/<name>).
+
+===== BEFORE release (bench/out/review5-libs-d2add24/libsohamalloc.so, sha256 8da10337)
+regress_sig_fork_init FAIL               3.3s  exit status 1: FAIL [signal_fork_init] a handler that allocated inside fork() did not return: K=46..46:hang K=47..47:hang K=49..49:hang K=48..48:hang K=8721..8784:hang
+regress_sig_fastpath FAIL               0.4s  exit status 1: FAIL [signal_fastpath_defer] part 1: runs freed in a handler stay allocated after the interrupted free() returned
+== 0 passed, 2 failed, 0 skipped, 0 informational in 4s
+--- regress_sig_fork_init log
+fork() runs 9428 library instructions; 543 children; handler calls made 9360; hangs 5; other failures 0
+FAIL [signal_fork_init] a handler that allocated inside fork() did not return: K=46..46:hang K=47..47:hang K=49..49:hang K=48..48:hang K=8721..8784:hang
+--- regress_sig_fastpath log
+part 1: the handler freed 3000 runs of 327680 B; still allocated after the free() calls returned: 1111, after 100000 more fast-path pairs: 1111
+FAIL [signal_fastpath_defer] part 1: runs freed in a handler stay allocated after the interrupted free() returned
+part 2: 1536 stepped calls, the handler freed 1392 runs (page walks meanwhile: 12533); most runs still allocated right after a call returned: 48 (after malloc_usable_size(solo), run freed at its library instruction 45)
+FAIL [signal_fastpath_defer] part 2: a run freed in a handler stayed allocated after the interrupted fast path returned
+
+===== BEFORE debug (bench/out/review5-libs-d2add24/libsohamalloc-debug.so, sha256 418db9aa)
+regress_sig_fork_init FAIL               3.3s  exit status 1: FAIL [signal_fork_init] a handler that allocated inside fork() did not return: K=46..46:hang K=47..47:hang K=48..48:hang K=49..49:hang K=8721..8784:hang
+regress_sig_fastpath FAIL               0.4s  exit status 1: FAIL [signal_fastpath_defer] part 1: runs freed in a handler stay allocated after the interrupted free() returned
+== 0 passed, 2 failed, 0 skipped, 0 informational in 4s
+--- regress_sig_fork_init log
+fork() runs 9569 library instructions; 545 children; handler calls made 9501; hangs 5; other failures 0
+FAIL [signal_fork_init] a handler that allocated inside fork() did not return: K=46..46:hang K=47..47:hang K=48..48:hang K=49..49:hang K=8721..8784:hang
+--- regress_sig_fastpath log
+part 1: the handler freed 3000 runs of 327680 B; still allocated after the free() calls returned: 1083, after 100000 more fast-path pairs: 1083
+FAIL [signal_fastpath_defer] part 1: runs freed in a handler stay allocated after the interrupted free() returned
+part 2: 1536 stepped calls, the handler freed 1392 runs (page walks meanwhile: 12961); most runs still allocated right after a call returned: 47 (after malloc_usable_size(solo), run freed at its library instruction 45)
+FAIL [signal_fastpath_defer] part 2: a run freed in a handler stayed allocated after the interrupted fast path returned
+
+===== AFTER release (build/libsohamalloc.so, sha256 35b55928)
+regress_sig_fork_init PASS               0.7s  
+regress_sig_fastpath PASS               2.0s  
+== 2 passed, 0 failed, 0 skipped, 0 informational in 3s
+--- regress_sig_fork_init log
+fork() runs 9428 library instructions; 543 children; handler calls made 9428; hangs 0; other failures 0
+PASS
+--- regress_sig_fastpath log
+part 1: the handler freed 3000 runs of 327680 B; still allocated after the free() calls returned: 0, after 100000 more fast-path pairs: 0
+part 2: 1536 stepped calls, the handler freed 1416 runs (page walks meanwhile: 47360); most runs still allocated right after a call returned: 0
+PASS
+
+===== AFTER debug (build-debug/libsohamalloc.so, sha256 3abf0edc)
+regress_sig_fork_init PASS               0.7s  
+regress_sig_fastpath PASS               2.1s  
+== 2 passed, 0 failed, 0 skipped, 0 informational in 3s
+--- regress_sig_fork_init log
+fork() runs 9569 library instructions; 545 children; handler calls made 9569; hangs 0; other failures 0
+PASS
+--- regress_sig_fastpath log
+part 1: the handler freed 3000 runs of 327680 B; still allocated after the free() calls returned: 0, after 100000 more fast-path pairs: 0
+part 2: 1536 stepped calls, the handler freed 1416 runs (page walks meanwhile: 47506); most runs still allocated right after a call returned: 0
+PASS
+
+===== MUTANT without the solo_usable_busy drain (bench/out/review5-work/verify-r5-2/m/nosolousable/build/libsohamalloc.so, sha256 81f6548f)
+regress_sig_fork_init PASS               0.8s  
+regress_sig_fastpath FAIL               2.0s  exit status 1: FAIL [signal_fastpath_defer] part 2: a run freed in a handler stayed allocated after the interrupted fast path returned
+== 1 passed, 1 failed, 0 skipped, 0 informational in 3s
+--- regress_sig_fork_init log
+fork() runs 9428 library instructions; 543 children; handler calls made 9428; hangs 0; other failures 0
+PASS
+--- regress_sig_fastpath log
+part 1: the handler freed 3000 runs of 327680 B; still allocated after the free() calls returned: 0, after 100000 more fast-path pairs: 0
+part 2: 1536 stepped calls, the handler freed 1431 runs (page walks meanwhile: 46892); most runs still allocated right after a call returned: 1 (after malloc_usable_size(solo), run freed at its library instruction 29)
+FAIL [signal_fastpath_defer] part 2: a run freed in a handler stayed allocated after the interrupted fast path returned
+
+===== CONTROL (refuter's build of the fixed tree) (bench/out/review5-work/verify-r5-2/m/fixed/build/libsohamalloc.so, sha256 c5067f6c)
+regress_sig_fork_init PASS               0.7s  
+regress_sig_fastpath PASS               2.1s  
+== 2 passed, 0 failed, 0 skipped, 0 informational in 3s
+--- regress_sig_fork_init log
+fork() runs 9428 library instructions; 543 children; handler calls made 9428; hangs 0; other failures 0
+PASS
+--- regress_sig_fastpath log
+part 1: the handler freed 3000 runs of 327680 B; still allocated after the free() calls returned: 0, after 100000 more fast-path pairs: 0
+part 2: 1536 stepped calls, the handler freed 1416 runs (page walks meanwhile: 52717); most runs still allocated right after a call returned: 0
+PASS
