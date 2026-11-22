@@ -100,7 +100,7 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
     - `fork()` called from a handler inside the init windows hangs both before and after the fix. That case is §10 limit 6, and the fix did not make it worse.
     - Still to check: the takeover path, concurrent forks, `ensure_init`, and whether the test could pass on broken code.
 
-    **Third launch running now:** workflow `wf_b495ca70-f7d` (2026-11-22). If it is interrupted, launch `Workflow({scriptPath: "<script>", args: {keys: ["r5-1-fork-init"]}})`; it continues from its notes.
+    **Fourth launch running now:** workflow `wf_2829a66c-14d`, 2026-11-22 01:43. The third launch was cut off at 01:20 when the session ended. A new interim result from its notes, not yet verified: a `fork()` called from a handler while the outer `fork_prepare` runs init can leave the busy byte stuck, because the nested `fork_prepare` overwrites `fork_busy`. That is §10 limit 6, but the fix may widen the window; the refuter is comparing with `d2add24`. If it is interrupted, launch `Workflow({scriptPath: "<script>", args: {keys: ["r5-1-fork-init"]}})`; it continues from its notes.
 - **Review round 6 reviews `16e298e`** (the round-5 fixes and the refuters' follow-ups; the matrix passed on it).
   - **Script:** `~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round6.js`. It is generated from the round-5 script by `bench/out/make-review6-script.py 16e298e`; a copy is in `docs/research-log/data/review6/` (git-excluded).
   - **Frozen libraries:** `bench/out/review6-libs-16e298e/`. sha256 prefixes: release `35b55928`, debug `3abf0edc`, armhf `ce84fdee`, aarch64 `cccfe454`.
@@ -108,7 +108,7 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 
   | Wave | Lenses | Status |
   |---|---|---|
-  | 1 | signal-reentrancy, concurrency | running since 2026-11-22, workflow `wf_442946b5-769` |
+  | 1 | signal-reentrancy, concurrency | running: second launch `wf_818b253b-2cc` (2026-11-22 01:43). The first, `wf_442946b5-769`, was cut off at 01:20 when the session ended. Interim, not yet refuted: the concurrency reviewer reproduced that §9's narrow notify race can strand a page until its new owner frees into it locally or exits; §9 says it lasts only until the old heap drains it |
   | 2 | lifecycle-fork-init, api-and-memory | not started |
   | 3 | portability-and-failure-paths, hardening-checks | not started |
   | 4 | page-heap-and-release | not started |
