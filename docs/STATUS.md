@@ -108,7 +108,7 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 
   | Wave | Lenses | Status |
   |---|---|---|
-  | 1 | signal-reentrancy, concurrency | running: second launch `wf_818b253b-2cc` (2026-11-22 01:43). The first, `wf_442946b5-769`, was cut off at 01:20 when the session ended. Interim, not yet refuted: the concurrency reviewer reproduced that §9's narrow notify race can strand a page until its new owner frees into it locally or exits; §9 says it lasts only until the old heap drains it |
+  | 1 | signal-reentrancy, concurrency | **stopped on purpose at 90% usage** (2026-11-22, about 01:55); relaunch it after the usage window resets. Second launch `wf_818b253b-2cc` (2026-11-22 01:43). The first, `wf_442946b5-769`, was cut off at 01:20 when the session ended. Interim, not yet refuted: the concurrency reviewer reproduced that §9's narrow notify race can strand a page until its new owner frees into it locally or exits; §9 says it lasts only until the old heap drains it |
   | 2 | lifecycle-fork-init, api-and-memory | not started |
   | 3 | portability-and-failure-paths, hardening-checks | not started |
   | 4 | page-heap-and-release | not started |
@@ -146,6 +146,14 @@ R4-6 (pending-handoff fences, unverified) is fixed by pattern. Of the minors, R4
 - **The partial rerun on `fd735dd`** (456 of 810 trials, all survived) is superseded by `ae95875`. Rerun the campaign's sohamalloc rows on the final code after review round 4.
 
 ## Next
+
+**Resume here (usage reached 90% on 2026-11-22; everything was committed and pushed):**
+
+1. Check the R5-1 refuter. It was left running as workflow `wf_2829a66c-14d` and may have been cut off at the limit. If its journal has no result, relaunch it; it continues from `bench/out/review5-work/verify-r5-1/NOTES.md`:
+   `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-verify-r5-fixes-wf_29c0820d-a59.js", args: {keys: ["r5-1-fork-init"]}})`
+2. Relaunch round-6 wave 1. Its reviewers continue from `bench/out/review6-work/<lens>/NOTES.md`, and the concurrency notes already say it is done:
+   `Workflow({scriptPath: "~/.claude/projects/-home-sohambasanwar-sohamalloc/8c5fee8d-8e37-4816-96c1-7ff48ca35722/workflows/scripts/sohamalloc-review-round6.js", args: {lenses: ["signal-reentrancy", "concurrency"]}})`
+3. Keep the Claude Code session open until a wave finishes. Sessions ending under running agents cut off three earlier launches.
 
 1. **When the R5-1 refuter and round-6 wave 1 finish:** save `wave1.json` and check every finding against the code. Anything confirmed critical or major gets a test that fails before the fix and passes after, then the matrix and a commit, and the round restarts on the fixed commit. Otherwise run waves 2 to 5, sized by wave 1's measured cost. Fix what it confirms, run `tools/verify-matrix.sh`, and review again, until a round confirms no critical or major finding (gate 2).
 2. **Campaign.** Done on `d2add24`: the sohamalloc rerun with all 9 handler kinds and the `aligned` kind for the other eight allocators are archived. The round-5 fixes change allocator code, so sohamalloc's rows must be rerun on the final code.
